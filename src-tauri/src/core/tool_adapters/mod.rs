@@ -13,6 +13,7 @@ pub enum ToolId {
     KimiCli,
     Augment,
     OpenClaw,
+    Copaw,
     Cline,
     CodeBuddy,
     CommandCode,
@@ -60,6 +61,7 @@ impl ToolId {
             ToolId::KimiCli => "kimi_cli",
             ToolId::Augment => "augment",
             ToolId::OpenClaw => "openclaw",
+            ToolId::Copaw => "copaw",
             ToolId::Cline => "cline",
             ToolId::CodeBuddy => "codebuddy",
             ToolId::CommandCode => "command_code",
@@ -178,6 +180,13 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
             // add-skill global path: ~/.openclaw/skills/
             relative_skills_dir: ".openclaw/skills",
             relative_detect_dir: ".openclaw",
+        },
+        ToolAdapter {
+            id: ToolId::Copaw,
+            display_name: "Copaw",
+            // add-skill global path: ~/.copaw/skill_pool/
+            relative_skills_dir: ".copaw/skill_pool",
+            relative_detect_dir: ".copaw",
         },
         ToolAdapter {
             id: ToolId::Cline,
