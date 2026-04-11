@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-04-11
+
+### Added
+- **Copaw tool adapter**: Support for Copaw AI coding tool (thanks @LeonDevLifeLog [PR#50](https://github.com/qufei1993/skills-hub/pull/50)).
+
+### Fixed
+- **Git skill install & frontmatter rendering**: Fixed issues with Git-based skill installation and frontmatter metadata rendering.
+- **Git skill discovery for container paths**: Fixed skill discovery failing when repository uses container-style directory paths.
+
 ## [0.4.2] - 2026-04-06
 
 ### Fixed

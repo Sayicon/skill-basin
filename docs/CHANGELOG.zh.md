@@ -4,6 +4,15 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-04-11
+
+### 新增
+- **Copaw 工具适配**：新增 Copaw AI 编程工具支持（感谢 @LeonDevLifeLog [PR#50](https://github.com/qufei1993/skills-hub/pull/50)）。
+
+### 修复
+- **Git 技能安装与 frontmatter 渲染**：修复 Git 技能安装及 frontmatter 元数据渲染问题。
+- **Git 技能发现（容器路径）**：修复仓库使用容器风格目录路径时技能发现失败的问题。
+
 ## [0.4.2] - 2026-04-06
 
 ### 修复
