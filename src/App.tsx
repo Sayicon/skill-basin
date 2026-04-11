@@ -1102,10 +1102,37 @@ function App() {
       const isFolderUrl = url.includes('/tree/') || url.includes('/blob/')
 
       if (isFolderUrl) {
-        const created = await invokeTauri<InstallResultDto>('install_git', {
-          repoUrl: url,
-          name: gitName.trim() || undefined,
-        })
+        const candidates = await invokeTauri<GitSkillCandidate[]>(
+          'list_git_skills_cmd',
+          { repoUrl: url },
+        )
+        if (candidates.length === 0) {
+          throw new Error(t('errors.noSkillsFoundWithHint'))
+        }
+        if (candidates.length > 1) {
+          setGitCandidatesRepoUrl(url)
+          setGitCandidates(candidates)
+          setGitCandidateSelected(
+            Object.fromEntries(candidates.map((c) => [c.subpath, true])),
+          )
+          setShowGitPickModal(true)
+          setActionMessage(null)
+          setLoading(false)
+          setLoadingStartAt(null)
+          return
+        }
+        if (isSkillNameTaken(candidates[0].name)) {
+          setError(t('errors.skillAlreadyExists', { name: candidates[0].name }))
+          return
+        }
+        const created = await invokeTauri<InstallResultDto>(
+          'install_git_selection',
+          {
+            repoUrl: url,
+            subpath: candidates[0].subpath,
+            name: gitName.trim() || undefined,
+          },
+        )
         {
           const selectedInstalledIds = tools
             .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))

@@ -174,7 +174,7 @@ pub fn parse_github_api_params(
 ) -> Option<(String, String, String, String)> {
     // Only for GitHub URLs with a subpath
     let subpath = subpath?;
-    if subpath.is_empty() {
+    if subpath.is_empty() || subpath == "." {
         return None;
     }
 
@@ -224,6 +224,16 @@ mod tests {
     fn parse_github_api_params_returns_none_without_subpath() {
         let result =
             parse_github_api_params("https://github.com/openclaw/skills.git", Some("main"), None);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn parse_github_api_params_returns_none_for_root_subpath() {
+        let result = parse_github_api_params(
+            "https://github.com/openclaw/skills.git",
+            Some("main"),
+            Some("."),
+        );
         assert_eq!(result, None);
     }
 

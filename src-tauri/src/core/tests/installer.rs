@@ -84,6 +84,16 @@ fn parses_github_urls() {
     assert_eq!(p.branch.as_deref(), Some("main"));
     assert_eq!(p.subpath.as_deref(), Some("skills/x"));
 
+    let p = super::parse_github_url("https://github.com/owner/repo/blob/main/skills/x/SKILL.md");
+    assert_eq!(p.clone_url, "https://github.com/owner/repo.git");
+    assert_eq!(p.branch.as_deref(), Some("main"));
+    assert_eq!(p.subpath.as_deref(), Some("skills/x"));
+
+    let p = super::parse_github_url("https://github.com/owner/repo/blob/main/SKILL.md");
+    assert_eq!(p.clone_url, "https://github.com/owner/repo.git");
+    assert_eq!(p.branch.as_deref(), Some("main"));
+    assert_eq!(p.subpath.as_deref(), Some("."));
+
     let p = super::parse_github_url("/local/path/to/repo");
     assert_eq!(p.clone_url, "/local/path/to/repo");
 }
@@ -399,6 +409,80 @@ fn install_git_skill_uses_skill_md_name_over_subpath_skills() {
     assert_eq!(skill.description.as_deref(), Some("A real skill"));
 }
 
+#[test]
+fn install_git_skill_rejects_container_subpath_without_skill_md() {
+    let app = tauri::test::mock_app();
+    let (_dir, store) = make_store();
+    let central_root = tempfile::tempdir().unwrap();
+    set_central_path(&store, central_root.path());
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(
+        repo_dir
+            .path()
+            .join("awesome_agent_skills/technical-writer"),
+    )
+    .unwrap();
+    fs::write(
+        repo_dir
+            .path()
+            .join("awesome_agent_skills/technical-writer/SKILL.md"),
+        "---\nname: technical-writer\n---\n",
+    )
+    .unwrap();
+    let repo = init_git_repo(repo_dir.path());
+    commit_all(&repo, "add container skill");
+
+    let err = match super::install_git_skill_from_selection(
+        app.handle(),
+        &store,
+        repo_dir.path().to_string_lossy().as_ref(),
+        "awesome_agent_skills",
+        None,
+    ) {
+        Ok(_) => panic!("expected invalid skill path"),
+        Err(e) => e,
+    };
+    assert!(format!("{:#}", err).contains("SKILL_INVALID|missing_skill_md"));
+}
+
+#[test]
+fn install_git_skill_selection_accepts_specific_child_under_container() {
+    let app = tauri::test::mock_app();
+    let (_dir, store) = make_store();
+    let central_root = tempfile::tempdir().unwrap();
+    set_central_path(&store, central_root.path());
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(
+        repo_dir
+            .path()
+            .join("awesome_agent_skills/technical-writer"),
+    )
+    .unwrap();
+    fs::write(
+        repo_dir
+            .path()
+            .join("awesome_agent_skills/technical-writer/SKILL.md"),
+        "---\nname: technical-writer\ndescription: docs\n---\n",
+    )
+    .unwrap();
+    let repo = init_git_repo(repo_dir.path());
+    commit_all(&repo, "add container skill");
+
+    let res = super::install_git_skill_from_selection(
+        app.handle(),
+        &store,
+        repo_dir.path().to_string_lossy().as_ref(),
+        "awesome_agent_skills/technical-writer",
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(res.name, "technical-writer");
+    assert!(res.central_path.join("SKILL.md").exists());
+}
+
 /// Issue #28: when user explicitly provides a name, SKILL.md should NOT override it.
 #[test]
 fn install_git_skill_respects_user_provided_name() {
@@ -540,4 +624,139 @@ fn list_git_skills_finds_root_level_skills() {
         !candidates.iter().any(|c| c.subpath.contains("not-a-skill")),
         "should not find not-a-skill"
     );
+}
+
+#[test]
+fn list_git_skills_finds_root_skill_container_layout() {
+    let app = tauri::test::mock_app();
+    let (_dir, store) = make_store();
+    let central_root = tempfile::tempdir().unwrap();
+    set_central_path(&store, central_root.path());
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(repo_dir.path().join("custom-agent-skills/technical-writer")).unwrap();
+    fs::write(
+        repo_dir
+            .path()
+            .join("custom-agent-skills/technical-writer/SKILL.md"),
+        "---\nname: technical-writer\ndescription: docs\n---\n",
+    )
+    .unwrap();
+    let repo = init_git_repo(repo_dir.path());
+    commit_all(&repo, "add container skill");
+
+    let candidates = super::list_git_skills(
+        app.handle(),
+        &store,
+        repo_dir.path().to_string_lossy().as_ref(),
+    )
+    .unwrap();
+
+    let candidate = candidates
+        .iter()
+        .find(|c| c.name == "technical-writer")
+        .expect("technical-writer should be discovered");
+    assert_eq!(candidate.subpath, "custom-agent-skills/technical-writer");
+    assert_eq!(candidate.description.as_deref(), Some("docs"));
+}
+
+#[test]
+fn collect_skill_dirs_finds_skills_under_explicit_container() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("technical-writer")).unwrap();
+    fs::create_dir_all(dir.path().join("not-a-skill")).unwrap();
+    fs::write(
+        dir.path().join("technical-writer/SKILL.md"),
+        "---\nname: technical-writer\n---\n",
+    )
+    .unwrap();
+
+    let dirs = super::collect_skill_dirs(dir.path());
+    let rels: Vec<String> = dirs
+        .iter()
+        .map(|p| {
+            p.strip_prefix(dir.path())
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(rels, vec!["technical-writer".to_string()]);
+}
+
+#[test]
+fn collect_skill_dirs_finds_multiple_skills_under_explicit_container() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("technical-writer")).unwrap();
+    fs::create_dir_all(dir.path().join("python-expert")).unwrap();
+    fs::create_dir_all(dir.path().join("not-a-skill")).unwrap();
+    fs::write(
+        dir.path().join("technical-writer/SKILL.md"),
+        "---\nname: technical-writer\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("python-expert/SKILL.md"),
+        "---\nname: python-expert\n---\n",
+    )
+    .unwrap();
+
+    let dirs = super::collect_skill_dirs(dir.path());
+    let rels: Vec<String> = dirs
+        .iter()
+        .map(|p| {
+            p.strip_prefix(dir.path())
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(
+        rels,
+        vec!["python-expert".to_string(), "technical-writer".to_string()]
+    );
+}
+
+#[test]
+fn collect_skill_dirs_scans_named_skill_containers_but_not_generic_dirs() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("agent-pack/hidden-skill")).unwrap();
+    fs::create_dir_all(dir.path().join("agent-skills/visible-skill")).unwrap();
+    fs::write(
+        dir.path().join("agent-pack/hidden-skill/SKILL.md"),
+        "---\nname: hidden\n---\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("agent-skills/visible-skill/SKILL.md"),
+        "---\nname: visible\n---\n",
+    )
+    .unwrap();
+
+    let dirs = super::collect_skill_dirs(dir.path());
+    let rels: Vec<String> = dirs
+        .iter()
+        .map(|p| {
+            p.strip_prefix(dir.path())
+                .unwrap_or(p)
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+    assert_eq!(rels, vec!["agent-skills/visible-skill".to_string()]);
+}
+
+#[test]
+fn collect_skill_dirs_deduplicates_known_root_containers() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::create_dir_all(dir.path().join("skills/technical-writer")).unwrap();
+    fs::write(
+        dir.path().join("skills/technical-writer/SKILL.md"),
+        "---\nname: technical-writer\n---\n",
+    )
+    .unwrap();
+
+    let dirs = super::collect_skill_dirs(dir.path());
+    assert_eq!(dirs.len(), 1);
+    assert!(dirs[0].ends_with("skills/technical-writer"));
 }
