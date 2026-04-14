@@ -254,7 +254,8 @@ function parseFrontmatter(raw: string): {
     if (idx === -1) continue
     const key = line.slice(0, idx).trim()
     let val = line.slice(idx + 1).trim()
-    if (val === '|' || val === '>') {
+    const blockStyle = val.match(/^([>|])[-+]?$/)?.[1]
+    if (blockStyle) {
       const blockLines: string[] = []
       while (i + 1 < lines.length) {
         const next = lines[i + 1]
@@ -263,7 +264,7 @@ function parseFrontmatter(raw: string): {
         i++
       }
       val =
-        val === '|'
+        blockStyle === '|'
           ? blockLines.join('\n').trim()
           : blockLines.map((v) => v.trim()).filter(Boolean).join(' ')
     }
@@ -290,22 +291,18 @@ const FileContentRenderer = memo(
       return (
         <div className="markdown-body">
           {meta && (
-            <table>
-              <thead>
-                <tr>
-                  {Object.keys(meta).map((k) => (
-                    <th key={k}>{k}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {Object.values(meta).map((v, i) => (
-                    <td key={i}>{v}</td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
+            <dl className="frontmatter-meta">
+              {Object.entries(meta).map(([key, value]) => (
+                <div
+                  className="frontmatter-meta-item"
+                  data-key={key}
+                  key={key}
+                >
+                  <dt>{key}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
           )}
           <Markdown
             remarkPlugins={[remarkFrontmatter, remarkGfm]}

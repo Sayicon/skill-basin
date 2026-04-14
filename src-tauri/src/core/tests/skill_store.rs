@@ -425,22 +425,6 @@ fn update_skill_description_backfills() {
 }
 
 #[test]
-fn list_skills_missing_description_filters_correctly() {
-    let (_dir, store) = make_store();
-
-    let s1 = make_skill("m1", "M1", "/central/m1", 1);
-    store.upsert_skill(&s1).unwrap();
-
-    let mut s2 = make_skill("m2", "M2", "/central/m2", 2);
-    s2.description = Some("has desc".to_string());
-    store.upsert_skill(&s2).unwrap();
-
-    let missing = store.list_skills_missing_description().unwrap();
-    assert_eq!(missing.len(), 1);
-    assert_eq!(missing[0].id, "m1");
-}
-
-#[test]
 fn error_context_includes_db_path() {
     let store = SkillStore::new(PathBuf::from("/this/path/should/not/exist/test.db"));
     let err = store.ensure_schema().unwrap_err();

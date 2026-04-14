@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::core::skill_store::{SkillStore, SkillTargetRecord};
+use crate::core::skill_store::{SkillRecord, SkillStore, SkillTargetRecord};
 
 fn make_store() -> (tempfile::TempDir, SkillStore) {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -143,6 +143,78 @@ body
     assert_eq!(
         desc.as_deref(),
         Some("Creates clear documentation, API references, guides, and\ntechnical content for developers and users.")
+    );
+}
+
+#[test]
+fn parses_skill_md_frontmatter_folded_chomp_description() {
+    let dir = tempfile::tempdir().unwrap();
+    let p = dir.path().join("SKILL.md");
+    fs::write(
+        &p,
+        r#"---
+name: fireworks-tech-graph
+description: >-
+  Use when the user wants to create any technical diagram - architecture, data
+  flow, flowchart, sequence, agent/memory, or concept map - and export as
+  SVG+PNG.
+---
+
+body
+"#,
+    )
+    .unwrap();
+
+    let (name, desc) = super::parse_skill_md(&p).unwrap();
+    assert_eq!(name, "fireworks-tech-graph");
+    assert_eq!(
+        desc.as_deref(),
+        Some(
+            "Use when the user wants to create any technical diagram - architecture, data flow, flowchart, sequence, agent/memory, or concept map - and export as SVG+PNG."
+        )
+    );
+}
+
+#[test]
+fn backfill_skill_descriptions_replaces_stale_frontmatter_marker() {
+    let (_dir, store) = make_store();
+    let central = tempfile::tempdir().unwrap();
+    fs::write(
+        central.path().join("SKILL.md"),
+        r#"---
+name: fireworks-tech-graph
+description: >-
+  Correct folded description.
+---
+"#,
+    )
+    .unwrap();
+
+    store
+        .upsert_skill(&SkillRecord {
+            id: "fireworks".to_string(),
+            name: "fireworks-tech-graph".to_string(),
+            description: Some(">-".to_string()),
+            source_type: "local".to_string(),
+            source_ref: None,
+            source_subpath: None,
+            source_revision: None,
+            central_path: central.path().to_string_lossy().to_string(),
+            content_hash: None,
+            created_at: 1,
+            updated_at: 1,
+            last_sync_at: None,
+            last_seen_at: 1,
+            status: "ok".to_string(),
+        })
+        .unwrap();
+
+    super::backfill_skill_descriptions(&store);
+
+    let skill = store.get_skill_by_id("fireworks").unwrap().unwrap();
+    assert_eq!(
+        skill.description.as_deref(),
+        Some("Correct folded description.")
     );
 }
 

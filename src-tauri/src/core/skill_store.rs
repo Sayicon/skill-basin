@@ -336,40 +336,6 @@ impl SkillStore {
         })
     }
 
-    pub fn list_skills_missing_description(&self) -> Result<Vec<SkillRecord>> {
-        self.with_conn(|conn| {
-            let mut stmt = conn.prepare(
-        "SELECT id, name, description, source_type, source_ref, source_subpath, source_revision, central_path, content_hash,
-                created_at, updated_at, last_sync_at, last_seen_at, status
-         FROM skills
-         WHERE description IS NULL",
-      )?;
-            let rows = stmt.query_map([], |row| {
-                Ok(SkillRecord {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    description: row.get(2)?,
-                    source_type: row.get(3)?,
-                    source_ref: row.get(4)?,
-                    source_subpath: row.get(5)?,
-                    source_revision: row.get(6)?,
-                    central_path: row.get(7)?,
-                    content_hash: row.get(8)?,
-                    created_at: row.get(9)?,
-                    updated_at: row.get(10)?,
-                    last_sync_at: row.get(11)?,
-                    last_seen_at: row.get(12)?,
-                    status: row.get(13)?,
-                })
-            })?;
-            let mut items = Vec::new();
-            for row in rows {
-                items.push(row?);
-            }
-            Ok(items)
-        })
-    }
-
     pub fn delete_skill(&self, skill_id: &str) -> Result<()> {
         self.with_conn(|conn| {
             conn.execute("DELETE FROM skills WHERE id = ?1", params![skill_id])?;
