@@ -792,10 +792,12 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
     let targets = store.list_skill_targets(skill_id)?;
     let mut updated_targets: Vec<String> = Vec::new();
     for t in targets {
-        // Skip if tool not installed anymore.
-        if let Some(adapter) = adapter_by_key(&t.tool) {
-            if !is_tool_installed(&adapter).unwrap_or(false) {
-                continue;
+        // Project scoped targets live under a project root and do not require global tool install detection.
+        if t.scope == "global" {
+            if let Some(adapter) = adapter_by_key(&t.tool) {
+                if !is_tool_installed(&adapter).unwrap_or(false) {
+                    continue;
+                }
             }
         }
         let force_copy = t.mode == "copy" || t.tool == "cursor";
@@ -806,6 +808,8 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
                 id: t.id.clone(),
                 skill_id: t.skill_id.clone(),
                 tool: t.tool.clone(),
+                scope: t.scope.clone(),
+                project_path: t.project_path.clone(),
                 target_path: sync_res.target_path.to_string_lossy().to_string(),
                 mode: "copy".to_string(),
                 status: "ok".to_string(),
@@ -1364,10 +1368,9 @@ fn repo_cache_key(clone_url: &str, branch: Option<&str>, subpath: Option<&str>) 
     hex::encode(hasher.finalize())
 }
 
-/// Backfill description for skills that have NULL description in the database.
-/// Reads SKILL.md from the central_path of each skill.
+/// Backfill description for skills from SKILL.md.
 pub fn backfill_skill_descriptions(store: &SkillStore) {
-    let skills = match store.list_skills_missing_description() {
+    let skills = match store.list_skills() {
         Ok(s) => s,
         Err(_) => return,
     };
@@ -1375,7 +1378,9 @@ pub fn backfill_skill_descriptions(store: &SkillStore) {
         let central = std::path::Path::new(&skill.central_path);
         let skill_md = central.join("SKILL.md");
         if let Some((_, Some(desc))) = parse_skill_md(&skill_md) {
-            let _ = store.update_skill_description(&skill.id, Some(&desc));
+            if skill.description.as_deref() != Some(desc.as_str()) {
+                let _ = store.update_skill_description(&skill.id, Some(&desc));
+            }
         }
     }
 }
@@ -1405,8 +1410,8 @@ fn parse_skill_md_with_reason(path: &Path) -> Result<(String, Option<String>), &
             name = Some(clean_frontmatter_value(v));
         } else if let Some(v) = l.strip_prefix("description:") {
             let v = v.trim();
-            if v == "|" || v == ">" {
-                let folded = v == ">";
+            if let Some(block_style) = frontmatter_block_style(v) {
+                let folded = block_style == '>';
                 let mut block_lines: Vec<String> = Vec::new();
                 while i + 1 < lines.len() {
                     let next = lines[i + 1];
@@ -1452,6 +1457,19 @@ fn clean_frontmatter_value(value: &str) -> String {
         value[1..value.len() - 1].to_string()
     } else {
         value.to_string()
+    }
+}
+
+fn frontmatter_block_style(value: &str) -> Option<char> {
+    let mut chars = value.chars();
+    let style = chars.next()?;
+    if style != '|' && style != '>' {
+        return None;
+    }
+    match chars.next() {
+        None => Some(style),
+        Some('-' | '+') if chars.next().is_none() => Some(style),
+        _ => None,
     }
 }
 

@@ -43,6 +43,58 @@ fn expand_home_path_empty_is_error() {
 }
 
 #[test]
+fn normalize_scope_defaults_to_global_and_rejects_unknown() {
+    assert_eq!(normalize_scope(None).unwrap(), "global");
+    assert_eq!(normalize_scope(Some("global")).unwrap(), "global");
+    assert_eq!(normalize_scope(Some("project")).unwrap(), "project");
+    assert!(normalize_scope(Some("workspace")).is_err());
+}
+
+#[test]
+fn recent_projects_are_deduped_ordered_and_limited() {
+    let (_dir, store) = make_store();
+    let project_root = tempfile::tempdir().unwrap();
+    let mut paths = Vec::new();
+    for i in 0..9 {
+        let path = project_root.path().join(format!("project-{i}"));
+        std::fs::create_dir_all(&path).unwrap();
+        paths.push(path);
+    }
+
+    for path in &paths {
+        save_recent_project_impl(&store, path.to_string_lossy().as_ref()).unwrap();
+    }
+
+    let recent = get_recent_projects_impl(&store).unwrap();
+    assert_eq!(recent.len(), 8);
+    assert_eq!(recent[0], paths[8].to_string_lossy());
+    assert_eq!(recent[7], paths[1].to_string_lossy());
+    assert!(!recent.contains(&paths[0].to_string_lossy().to_string()));
+
+    save_recent_project_impl(&store, paths[3].to_string_lossy().as_ref()).unwrap();
+    let recent = get_recent_projects_impl(&store).unwrap();
+    assert_eq!(recent.len(), 8);
+    assert_eq!(recent[0], paths[3].to_string_lossy());
+    assert_eq!(
+        recent
+            .iter()
+            .filter(|item| *item == &paths[3].to_string_lossy())
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn save_recent_project_rejects_missing_directory() {
+    let (_dir, store) = make_store();
+    let missing = tempfile::tempdir().unwrap().path().join("missing-project");
+    let err = save_recent_project_impl(&store, missing.to_string_lossy().as_ref())
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("projectPath must be an existing directory"));
+}
+
+#[test]
 fn remove_path_any_handles_file_dir_and_missing() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("f.txt");
@@ -99,6 +151,8 @@ fn get_managed_skills_impl_maps_targets() {
         id: "t1".to_string(),
         skill_id: "s1".to_string(),
         tool: "cursor".to_string(),
+        scope: "global".to_string(),
+        project_path: None,
         target_path: "/tmp/target".to_string(),
         mode: "copy".to_string(),
         status: "ok".to_string(),
@@ -111,4 +165,6 @@ fn get_managed_skills_impl_maps_targets() {
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].targets.len(), 1);
     assert_eq!(out[0].targets[0].tool, "cursor");
+    assert_eq!(out[0].targets[0].scope, "global");
+    assert!(out[0].targets[0].project_path.is_none());
 }

@@ -1,13 +1,16 @@
 import { memo } from 'react'
-import { ArrowUpDown, RefreshCw, Search } from 'lucide-react'
+import { ArrowUpDown, ChevronDown, RefreshCw, Search } from 'lucide-react'
 import type { TFunction } from 'i18next'
 
 type FilterBarProps = {
   sortBy: 'updated' | 'name'
   searchQuery: string
+  scopeFilter: 'all' | 'global' | 'project'
+  totalCount: number
   loading: boolean
   onSortChange: (value: 'updated' | 'name') => void
   onSearchChange: (value: string) => void
+  onScopeFilterChange: (value: 'all' | 'global' | 'project') => void
   onRefresh: () => void
   t: TFunction
 }
@@ -15,18 +18,45 @@ type FilterBarProps = {
 const FilterBar = ({
   sortBy,
   searchQuery,
+  scopeFilter,
+  totalCount,
   loading,
   onSortChange,
   onSearchChange,
+  onScopeFilterChange,
   onRefresh,
   t,
 }: FilterBarProps) => {
+  const scopeOptions: { value: 'all' | 'global' | 'project'; label: string }[] = [
+    { value: 'all', label: t('scope.all') },
+    { value: 'global', label: t('scope.global') },
+    { value: 'project', label: t('scope.project') },
+  ]
+
   return (
     <div className="filter-bar">
-      <div className="filter-title">{t('allSkills')}</div>
+      <div className="filter-title">
+        {t('allSkills')}（{totalCount}）
+      </div>
       <div className="filter-actions">
         <button className="btn btn-secondary sort-btn" type="button">
-          <span className="sort-label">{t('filterSort')}:</span>
+          {scopeOptions.find((option) => option.value === scopeFilter)?.label ?? t('scope.all')}
+          <ChevronDown size={12} />
+          <select
+            aria-label={t('scope.filterLabel')}
+            value={scopeFilter}
+            onChange={(event) =>
+              onScopeFilterChange(event.target.value as 'all' | 'global' | 'project')
+            }
+          >
+            {scopeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </button>
+        <button className="btn btn-secondary sort-btn" type="button">
           {sortBy === 'updated' ? t('sortUpdated') : t('sortName')}
           <ArrowUpDown size={12} />
           <select

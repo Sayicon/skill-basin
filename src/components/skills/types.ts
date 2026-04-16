@@ -22,6 +22,7 @@ export type OnboardingPlan = {
 export type ToolOption = {
   id: string
   label: string
+  supports_project_scope?: boolean
 }
 
 export type ManagedSkill = {
@@ -37,6 +38,8 @@ export type ManagedSkill = {
   status: string
   targets: {
     tool: string
+    scope: 'global' | 'project' | string
+    project_path?: string | null
     mode: string
     status: string
     target_path: string
@@ -70,6 +73,7 @@ export type ToolInfoDto = {
   label: string
   installed: boolean
   skills_dir: string
+  supports_project_scope: boolean
 }
 
 export type ToolStatusDto = {

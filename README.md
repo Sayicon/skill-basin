@@ -1,6 +1,6 @@
 # Skills Hub (Tauri Desktop)
 
-A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place and sync them to multiple AI coding tools’ global skills directories (prefer symlink/junction, fallback to copy) — “Install once, sync everywhere”.
+A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place and sync them to multiple AI coding tools’ global or project-level skills directories (prefer symlink/junction, fallback to copy) — “Install once, sync everywhere”.
 
 ## Documentation
 
@@ -9,9 +9,11 @@ A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place
 
 ## Key Features
 
-- **Explore page**: Browse featured skills (ClawHub, updated daily) and search online (skills.sh) — one-click install & sync to all detected tools
+- **Explore page**: Browse curated featured skills and search online — one-click install & sync to all detected tools
+- **Global / project sync**: Sync skills globally across all projects, or scope them to selected project directories
+- **Scope controls**: Switch a skill between Global and Project scope, manage project directories, and filter My Skills by scope
 - **Skill detail view**: Click a skill name to browse its files with Markdown rendering and syntax highlighting (40+ languages)
-- **Unified view**: Managed skills and per-tool activation status
+- **Unified view**: Managed skills, total skill count, scope badges, and per-tool activation status
 - **Onboarding migration**: Scan existing skills in installed tools, import into the Central Repo, and sync
 - **Import sources**: Local folder / Git URL (including multi-skill repo selection, `.claude/skills/` directory support)
 - **Update**: Refresh from source; propagate updates to copy-mode targets
@@ -31,50 +33,54 @@ A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place
 
 ## Supported AI Coding Tools
 
-| tool key | Display name | skills dir (relative to `~`) | detect dir (relative to `~`) |
-| --- | --- | --- | --- |
-| `cursor` | Cursor | `.cursor/skills` | `.cursor` |
-| `claude_code` | Claude Code | `.claude/skills` | `.claude` |
-| `codex` | Codex | `.codex/skills` | `.codex` |
-| `opencode` | OpenCode | `.config/opencode/skills` | `.config/opencode` |
-| `antigravity` | Antigravity | `.gemini/antigravity/global_skills` | `.gemini/antigravity` |
-| `amp` | Amp | `.config/agents/skills` | `.config/agents` |
-| `kimi_cli` | Kimi Code CLI | `.config/agents/skills` | `.config/agents` |
-| `augment` | Augment | `.augment/rules` | `.augment` |
-| `openclaw` | OpenClaw | `.openclaw/skills` | `.openclaw` |
-| `copaw` | Copaw | `.copaw/skill_pool` | `.copaw` |
-| `cline` | Cline | `.cline/skills` | `.cline` |
-| `codebuddy` | CodeBuddy | `.codebuddy/skills` | `.codebuddy` |
-| `command_code` | Command Code | `.commandcode/skills` | `.commandcode` |
-| `continue` | Continue | `.continue/skills` | `.continue` |
-| `crush` | Crush | `.config/crush/skills` | `.config/crush` |
-| `junie` | Junie | `.junie/skills` | `.junie` |
-| `iflow_cli` | iFlow CLI | `.iflow/skills` | `.iflow` |
-| `kiro_cli` | Kiro CLI | `.kiro/skills` | `.kiro` |
-| `kode` | Kode | `.kode/skills` | `.kode` |
-| `mcpjam` | MCPJam | `.mcpjam/skills` | `.mcpjam` |
-| `mistral_vibe` | Mistral Vibe | `.vibe/skills` | `.vibe` |
-| `mux` | Mux | `.mux/skills` | `.mux` |
-| `openclaude` | OpenClaude IDE | `.openclaude/skills` | `.openclaude` |
-| `openhands` | OpenHands | `.openhands/skills` | `.openhands` |
-| `pi` | Pi | `.pi/agent/skills` | `.pi` |
-| `qoder` | Qoder | `.qoder/skills` | `.qoder` |
-| `qwen_code` | Qwen Code | `.qwen/skills` | `.qwen` |
-| `trae` | Trae | `.trae/skills` | `.trae` |
-| `trae_cn` | Trae CN | `.trae-cn/skills` | `.trae-cn` |
-| `zencoder` | Zencoder | `.zencoder/skills` | `.zencoder` |
-| `neovate` | Neovate | `.neovate/skills` | `.neovate` |
-| `pochi` | Pochi | `.pochi/skills` | `.pochi` |
-| `adal` | AdaL | `.adal/skills` | `.adal` |
-| `kilo_code` | Kilo Code | `.kilocode/skills` | `.kilocode` |
-| `roo_code` | Roo Code | `.roo/skills` | `.roo` |
-| `goose` | Goose | `.config/goose/skills` | `.config/goose` |
-| `gemini_cli` | Gemini CLI | `.gemini/skills` | `.gemini` |
-| `github_copilot` | GitHub Copilot | `.copilot/skills` | `.copilot` |
-| `clawdbot` | Clawdbot | `.clawdbot/skills` | `.clawdbot` |
-| `droid` | Droid | `.factory/skills` | `.factory` |
-| `windsurf` | Windsurf | `.codeium/windsurf/skills` | `.codeium/windsurf` |
-| `moltbot` | MoltBot | `.moltbot/skills` | `.moltbot` |
+Project skills dirs are relative to the selected project root. Tools marked `N/A` do not have a confirmed project-level skills directory and are supported for global sync only.
+
+| tool key | Display name | global skills dir (relative to `~`) | project skills dir (relative to project) | detected if exists (relative to `~`) |
+| --- | --- | --- | --- | --- |
+| `cursor` | Cursor | `.cursor/skills` | `.agents/skills` | `.cursor` |
+| `claude_code` | Claude Code | `.claude/skills` | `.claude/skills` | `.claude` |
+| `codex` | Codex | `.codex/skills` | `.agents/skills` | `.codex` |
+| `opencode` | OpenCode | `.config/opencode/skills` | `.agents/skills` | `.config/opencode` |
+| `antigravity` | Antigravity | `.gemini/antigravity/skills` | `.agents/skills` | `.gemini/antigravity` |
+| `amp` | Amp | `.config/agents/skills` | `.agents/skills` | `.config/agents` |
+| `kimi_cli` | Kimi Code CLI | `.config/agents/skills` | `.agents/skills` | `.config/agents` |
+| `augment` | Augment | `.augment/skills` | `.augment/skills` | `.augment` |
+| `openclaw` | OpenClaw | `.openclaw/skills` | `skills` | `.openclaw` |
+| `copaw` | Copaw | `.copaw/skill_pool` | `.copaw/skill_pool` | `.copaw` |
+| `cline` | Cline | `.agents/skills` | `.agents/skills` | `.agents` |
+| `codebuddy` | CodeBuddy | `.codebuddy/skills` | `.codebuddy/skills` | `.codebuddy` |
+| `command_code` | Command Code | `.commandcode/skills` | `.commandcode/skills` | `.commandcode` |
+| `continue` | Continue | `.continue/skills` | `.continue/skills` | `.continue` |
+| `crush` | Crush | `.config/crush/skills` | `.crush/skills` | `.config/crush` |
+| `junie` | Junie | `.junie/skills` | `.junie/skills` | `.junie` |
+| `iflow_cli` | iFlow CLI | `.iflow/skills` | `.iflow/skills` | `.iflow` |
+| `kiro_cli` | Kiro CLI | `.kiro/skills` | `.kiro/skills` | `.kiro` |
+| `kode` | Kode | `.kode/skills` | `.kode/skills` | `.kode` |
+| `mcpjam` | MCPJam | `.mcpjam/skills` | `.mcpjam/skills` | `.mcpjam` |
+| `mistral_vibe` | Mistral Vibe | `.vibe/skills` | `.vibe/skills` | `.vibe` |
+| `mux` | Mux | `.mux/skills` | `.mux/skills` | `.mux` |
+| `openclaude` | OpenClaude IDE | `.openclaude/skills` | `.openclaude/skills` | `.openclaude` |
+| `openhands` | OpenHands | `.openhands/skills` | `.openhands/skills` | `.openhands` |
+| `pi` | Pi | `.pi/agent/skills` | `.pi/skills` | `.pi` |
+| `qoder` | Qoder | `.qoder/skills` | `.qoder/skills` | `.qoder` |
+| `qoderwork` | QoderWork | `.qoderwork/skills` | `.qoderwork/skills` | `.qoderwork` |
+| `qwen_code` | Qwen Code | `.qwen/skills` | `.qwen/skills` | `.qwen` |
+| `trae` | Trae | `.trae/skills` | `.trae/skills` | `.trae` |
+| `trae_cn` | Trae CN | `.trae-cn/skills` | `.trae/skills` | `.trae-cn` |
+| `zencoder` | Zencoder | `.zencoder/skills` | `.zencoder/skills` | `.zencoder` |
+| `neovate` | Neovate | `.neovate/skills` | `.neovate/skills` | `.neovate` |
+| `pochi` | Pochi | `.pochi/skills` | `.pochi/skills` | `.pochi` |
+| `adal` | AdaL | `.adal/skills` | `.adal/skills` | `.adal` |
+| `kilo_code` | Kilo Code | `.kilocode/skills` | `.kilocode/skills` | `.kilocode` |
+| `roo_code` | Roo Code | `.roo/skills` | `.roo/skills` | `.roo` |
+| `goose` | Goose | `.config/goose/skills` | `.goose/skills` | `.config/goose` |
+| `gemini_cli` | Gemini CLI | `.gemini/skills` | `.agents/skills` | `.gemini` |
+| `github_copilot` | GitHub Copilot | `.copilot/skills` | `.agents/skills` | `.copilot` |
+| `clawdbot` | Clawdbot | `.clawdbot/skills` | `.clawdbot/skills` | `.clawdbot` |
+| `droid` | Droid | `.factory/skills` | `.factory/skills` | `.factory` |
+| `windsurf` | Windsurf | `.codeium/windsurf/skills` | `.windsurf/skills` | `.codeium/windsurf` |
+| `moltbot` | MoltBot | `.moltbot/skills` | `.moltbot/skills` | `.moltbot` |
+| `hermes_agent` | Hermes Agent | `.hermes/skills` | N/A | `.hermes` |
 
 ## Development
 
@@ -124,6 +130,7 @@ cargo test
 ## FAQ / Notes
 
 - Where are skills stored? The Central Repo defaults to `~/.skillshub` (configurable in Settings).
+- What is project-level sync? The skill is still stored once in the Central Repo, but its sync target is a selected project directory such as `<project>/.agents/skills`, `<project>/.claude/skills`, or another tool-specific project skills path.
 - Why is Cursor sync always copy? Cursor currently does not support symlink/junction-based skill directories, so Skills Hub forces directory copy when syncing to Cursor.
 - Why does sync sometimes fall back to copy? Skills Hub prefers symlink/junction, but on some systems (especially Windows) symlinks may be restricted; in that case it falls back to directory copy.
 - What does `TARGET_EXISTS|...` mean? The target folder already exists and the operation did not overwrite it (default is non-destructive). Remove the existing folder or retry with the appropriate overwrite flow.

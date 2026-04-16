@@ -71,6 +71,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_central_repo_path,
             commands::set_central_repo_path,
+            commands::get_recent_projects,
+            commands::save_recent_project,
             commands::get_tool_status,
             commands::get_git_cache_cleanup_days,
             commands::get_git_cache_ttl_secs,
@@ -100,6 +102,20 @@ pub fn run() {
             commands::read_skill_file,
             commands::cancel_current_operation
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Resumed) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        });
 }

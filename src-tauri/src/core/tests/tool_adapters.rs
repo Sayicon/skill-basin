@@ -1,7 +1,9 @@
 use std::fs;
 
 use crate::core::tool_adapters::{
-    adapter_by_key, adapters_sharing_skills_dir, scan_tool_dir, ToolAdapter, ToolId,
+    adapter_by_key, adapters_sharing_project_skills_dir, adapters_sharing_skills_dir,
+    project_relative_skills_dir, resolve_project_path, scan_tool_dir, supports_project_scope,
+    ToolAdapter, ToolId,
 };
 
 #[test]
@@ -17,6 +19,7 @@ fn adapter_by_key_finds_new_tools() {
     assert!(adapter_by_key("openclaw").is_some());
     assert!(adapter_by_key("command_code").is_some());
     assert!(adapter_by_key("qwen_code").is_some());
+    assert!(adapter_by_key("hermes_agent").is_some());
 }
 
 #[test]
@@ -27,6 +30,84 @@ fn adapters_sharing_skills_dir_groups_amp_and_kimi() {
         group.into_iter().map(|a| a.id.as_key()).collect();
     assert!(keys.contains("amp"));
     assert!(keys.contains("kimi_cli"));
+}
+
+#[test]
+fn project_relative_skills_dir_maps_supported_agents() {
+    let shared_agents = [
+        ("cursor", ".agents/skills"),
+        ("codex", ".agents/skills"),
+        ("opencode", ".agents/skills"),
+        ("gemini_cli", ".agents/skills"),
+        ("github_copilot", ".agents/skills"),
+        ("amp", ".agents/skills"),
+        ("kimi_cli", ".agents/skills"),
+        ("antigravity", ".agents/skills"),
+        ("cline", ".agents/skills"),
+    ];
+
+    for (key, expected) in shared_agents {
+        let adapter = adapter_by_key(key).unwrap();
+        assert_eq!(project_relative_skills_dir(&adapter), expected, "{key}");
+        assert!(supports_project_scope(&adapter), "{key}");
+    }
+
+    let claude = adapter_by_key("claude_code").unwrap();
+    assert_eq!(project_relative_skills_dir(&claude), ".claude/skills");
+
+    let openclaw = adapter_by_key("openclaw").unwrap();
+    assert_eq!(project_relative_skills_dir(&openclaw), "skills");
+
+    let windsurf = adapter_by_key("windsurf").unwrap();
+    assert_eq!(project_relative_skills_dir(&windsurf), ".windsurf/skills");
+
+    let qwen = adapter_by_key("qwen_code").unwrap();
+    assert_eq!(project_relative_skills_dir(&qwen), ".qwen/skills");
+
+    let hermes = adapter_by_key("hermes_agent").unwrap();
+    assert_eq!(project_relative_skills_dir(&hermes), ".hermes/skills");
+    assert!(!supports_project_scope(&hermes));
+}
+
+#[test]
+fn project_path_resolution_uses_project_specific_mapping() {
+    let dir = tempfile::tempdir().unwrap();
+    let amp = adapter_by_key("amp").unwrap();
+    let opencode = adapter_by_key("opencode").unwrap();
+    let openclaw = adapter_by_key("openclaw").unwrap();
+
+    assert_eq!(
+        resolve_project_path(&amp, dir.path()).unwrap(),
+        dir.path().join(".agents/skills")
+    );
+    assert_eq!(
+        resolve_project_path(&opencode, dir.path()).unwrap(),
+        dir.path().join(".agents/skills")
+    );
+    assert_eq!(
+        resolve_project_path(&openclaw, dir.path()).unwrap(),
+        dir.path().join("skills")
+    );
+}
+
+#[test]
+fn adapters_sharing_project_skills_dir_groups_agents_tools() {
+    let cursor = adapter_by_key("cursor").unwrap();
+    let group = adapters_sharing_project_skills_dir(&cursor);
+    let keys: std::collections::HashSet<&'static str> =
+        group.into_iter().map(|a| a.id.as_key()).collect();
+
+    assert!(keys.contains("cursor"));
+    assert!(keys.contains("codex"));
+    assert!(keys.contains("opencode"));
+    assert!(keys.contains("gemini_cli"));
+    assert!(keys.contains("github_copilot"));
+    assert!(keys.contains("amp"));
+    assert!(keys.contains("kimi_cli"));
+    assert!(keys.contains("antigravity"));
+    assert!(keys.contains("cline"));
+    assert!(!keys.contains("claude_code"));
+    assert!(!keys.contains("windsurf"));
 }
 
 #[test]

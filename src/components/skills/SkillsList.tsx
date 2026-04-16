@@ -21,7 +21,10 @@ type SkillsListProps = {
   onUpdateSkill: (skill: ManagedSkill) => void
   onDeleteSkill: (skillId: string) => void
   onToggleTool: (skill: ManagedSkill, toolId: string) => void
+  onOpenScope: (skill: ManagedSkill) => void
   onOpenDetail: (skill: ManagedSkill) => void
+  getSkillScope: (skill: ManagedSkill) => 'global' | 'project'
+  getSkillProjects: (skill: ManagedSkill) => string[]
   t: TFunction
 }
 
@@ -37,7 +40,10 @@ const SkillsList = ({
   onUpdateSkill,
   onDeleteSkill,
   onToggleTool,
+  onOpenScope,
   onOpenDetail,
+  getSkillScope,
+  getSkillProjects,
   t,
 }: SkillsListProps) => {
   return (
@@ -82,7 +88,10 @@ const SkillsList = ({
               onUpdate={onUpdateSkill}
               onDelete={onDeleteSkill}
               onToggleTool={onToggleTool}
+              onOpenScope={onOpenScope}
               onOpenDetail={onOpenDetail}
+              getSkillScope={getSkillScope}
+              getSkillProjects={getSkillProjects}
               t={t}
             />
           ))}

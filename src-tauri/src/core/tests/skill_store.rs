@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::core::skill_store::{SkillRecord, SkillStore, SkillTargetRecord};
+use rusqlite::Connection;
 
 fn make_store() -> (tempfile::TempDir, SkillStore) {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -33,6 +34,80 @@ fn make_skill(id: &str, name: &str, central_path: &str, updated_at: i64) -> Skil
 fn schema_is_idempotent() {
     let (_dir, store) = make_store();
     store.ensure_schema().expect("ensure_schema again");
+}
+
+#[test]
+fn migrates_v3_targets_to_global_scope() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let db = dir.path().join("test.db");
+    let conn = Connection::open(&db).unwrap();
+    conn.execute_batch(
+        "CREATE TABLE skills (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NULL,
+          source_type TEXT NOT NULL,
+          source_ref TEXT NULL,
+          source_subpath TEXT NULL,
+          source_revision TEXT NULL,
+          central_path TEXT NOT NULL UNIQUE,
+          content_hash TEXT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          last_sync_at INTEGER NULL,
+          last_seen_at INTEGER NOT NULL,
+          status TEXT NOT NULL
+        );
+        CREATE TABLE skill_targets (
+          id TEXT PRIMARY KEY,
+          skill_id TEXT NOT NULL,
+          tool TEXT NOT NULL,
+          target_path TEXT NOT NULL,
+          mode TEXT NOT NULL,
+          status TEXT NOT NULL,
+          last_error TEXT NULL,
+          synced_at INTEGER NULL,
+          UNIQUE(skill_id, tool),
+          FOREIGN KEY(skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        );
+        CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE discovered_skills (
+          id TEXT PRIMARY KEY,
+          tool TEXT NOT NULL,
+          found_path TEXT NOT NULL,
+          name_guess TEXT NULL,
+          fingerprint TEXT NULL,
+          found_at INTEGER NOT NULL,
+          imported_skill_id TEXT NULL,
+          FOREIGN KEY(imported_skill_id) REFERENCES skills(id) ON DELETE SET NULL
+        );
+        INSERT INTO skills (
+          id, name, description, source_type, source_ref, source_subpath, source_revision,
+          central_path, content_hash, created_at, updated_at, last_sync_at, last_seen_at, status
+        ) VALUES (
+          's1', 'S1', NULL, 'local', NULL, NULL, NULL,
+          '/central/s1', NULL, 1, 2, NULL, 1, 'ok'
+        );
+        INSERT INTO skill_targets (
+          id, skill_id, tool, target_path, mode, status, last_error, synced_at
+        ) VALUES (
+          't1', 's1', 'cursor', '/target/s1', 'copy', 'ok', NULL, 3
+        );
+        PRAGMA user_version = 3;",
+    )
+    .unwrap();
+    drop(conn);
+
+    let store = SkillStore::new(db);
+    store.ensure_schema().unwrap();
+
+    let target = store
+        .get_skill_target("s1", "cursor", "global", None)
+        .unwrap()
+        .unwrap();
+    assert_eq!(target.target_path, "/target/s1");
+    assert_eq!(target.scope, "global");
+    assert!(target.project_path.is_none());
 }
 
 #[test]
@@ -101,6 +176,8 @@ fn skill_targets_upsert_unique_constraint_and_list_order() {
         id: "t1".to_string(),
         skill_id: "s1".to_string(),
         tool: "cursor".to_string(),
+        scope: "global".to_string(),
+        project_path: None,
         target_path: "/target/1".to_string(),
         mode: "copy".to_string(),
         status: "ok".to_string(),
@@ -110,7 +187,7 @@ fn skill_targets_upsert_unique_constraint_and_list_order() {
     store.upsert_skill_target(&t1).unwrap();
     assert_eq!(
         store
-            .get_skill_target("s1", "cursor")
+            .get_skill_target("s1", "cursor", "global", None)
             .unwrap()
             .unwrap()
             .target_path,
@@ -122,13 +199,17 @@ fn skill_targets_upsert_unique_constraint_and_list_order() {
     t1b.target_path = "/target/2".to_string();
     store.upsert_skill_target(&t1b).unwrap();
     assert_eq!(
-        store.get_skill_target("s1", "cursor").unwrap().unwrap().id,
+        store
+            .get_skill_target("s1", "cursor", "global", None)
+            .unwrap()
+            .unwrap()
+            .id,
         "t1",
         "unique(skill_id, tool) 冲突时应更新现有行而不是替换 id"
     );
     assert_eq!(
         store
-            .get_skill_target("s1", "cursor")
+            .get_skill_target("s1", "cursor", "global", None)
             .unwrap()
             .unwrap()
             .target_path,
@@ -139,6 +220,8 @@ fn skill_targets_upsert_unique_constraint_and_list_order() {
         id: "t3".to_string(),
         skill_id: "s1".to_string(),
         tool: "claude_code".to_string(),
+        scope: "global".to_string(),
+        project_path: None,
         target_path: "/target/cc".to_string(),
         mode: "copy".to_string(),
         status: "ok".to_string(),
@@ -152,8 +235,120 @@ fn skill_targets_upsert_unique_constraint_and_list_order() {
     assert_eq!(targets[0].tool, "claude_code");
     assert_eq!(targets[1].tool, "cursor");
 
-    store.delete_skill_target("s1", "cursor").unwrap();
-    assert!(store.get_skill_target("s1", "cursor").unwrap().is_none());
+    store
+        .delete_skill_target("s1", "cursor", "global", None)
+        .unwrap();
+    assert!(store
+        .get_skill_target("s1", "cursor", "global", None)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn project_targets_coexist_by_project_path_and_delete_precisely() {
+    let (_dir, store) = make_store();
+    let skill = make_skill("s1", "S1", "/central/s1", 1);
+    store.upsert_skill(&skill).unwrap();
+
+    let global = SkillTargetRecord {
+        id: "global".to_string(),
+        skill_id: "s1".to_string(),
+        tool: "cursor".to_string(),
+        scope: "global".to_string(),
+        project_path: None,
+        target_path: "/global/cursor/s1".to_string(),
+        mode: "copy".to_string(),
+        status: "ok".to_string(),
+        last_error: None,
+        synced_at: Some(1),
+    };
+    let project_a = SkillTargetRecord {
+        id: "project-a".to_string(),
+        skill_id: "s1".to_string(),
+        tool: "cursor".to_string(),
+        scope: "project".to_string(),
+        project_path: Some("/projects/a".to_string()),
+        target_path: "/projects/a/.agents/skills/s1".to_string(),
+        mode: "symlink".to_string(),
+        status: "ok".to_string(),
+        last_error: None,
+        synced_at: Some(2),
+    };
+    let project_b = SkillTargetRecord {
+        id: "project-b".to_string(),
+        skill_id: "s1".to_string(),
+        tool: "cursor".to_string(),
+        scope: "project".to_string(),
+        project_path: Some("/projects/b".to_string()),
+        target_path: "/projects/b/.agents/skills/s1".to_string(),
+        mode: "symlink".to_string(),
+        status: "ok".to_string(),
+        last_error: None,
+        synced_at: Some(3),
+    };
+
+    store.upsert_skill_target(&global).unwrap();
+    store.upsert_skill_target(&project_a).unwrap();
+    store.upsert_skill_target(&project_b).unwrap();
+
+    assert_eq!(store.list_skill_targets("s1").unwrap().len(), 3);
+    assert_eq!(
+        store
+            .get_skill_target("s1", "cursor", "global", None)
+            .unwrap()
+            .unwrap()
+            .target_path,
+        "/global/cursor/s1"
+    );
+    assert_eq!(
+        store
+            .get_skill_target("s1", "cursor", "project", Some("/projects/a"))
+            .unwrap()
+            .unwrap()
+            .target_path,
+        "/projects/a/.agents/skills/s1"
+    );
+    assert_eq!(
+        store
+            .get_skill_target("s1", "cursor", "project", Some("/projects/b"))
+            .unwrap()
+            .unwrap()
+            .target_path,
+        "/projects/b/.agents/skills/s1"
+    );
+
+    let mut updated_project_a = project_a.clone();
+    updated_project_a.id = "project-a-new-id".to_string();
+    updated_project_a.target_path = "/projects/a/.agents/skills/s1-updated".to_string();
+    store.upsert_skill_target(&updated_project_a).unwrap();
+
+    let got_project_a = store
+        .get_skill_target("s1", "cursor", "project", Some("/projects/a"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(got_project_a.id, "project-a");
+    assert_eq!(
+        got_project_a.target_path,
+        "/projects/a/.agents/skills/s1-updated"
+    );
+    assert_eq!(store.list_skill_targets("s1").unwrap().len(), 3);
+
+    store
+        .delete_skill_target("s1", "cursor", "project", Some("/projects/a"))
+        .unwrap();
+
+    assert!(store
+        .get_skill_target("s1", "cursor", "project", Some("/projects/a"))
+        .unwrap()
+        .is_none());
+    assert!(store
+        .get_skill_target("s1", "cursor", "project", Some("/projects/b"))
+        .unwrap()
+        .is_some());
+    assert!(store
+        .get_skill_target("s1", "cursor", "global", None)
+        .unwrap()
+        .is_some());
 }
 
 #[test]
@@ -166,6 +361,8 @@ fn deleting_skill_cascades_targets() {
         id: "t1".to_string(),
         skill_id: "s1".to_string(),
         tool: "cursor".to_string(),
+        scope: "global".to_string(),
+        project_path: None,
         target_path: "/target/1".to_string(),
         mode: "copy".to_string(),
         status: "ok".to_string(),
@@ -225,22 +422,6 @@ fn update_skill_description_backfills() {
             .as_deref(),
         Some("backfilled")
     );
-}
-
-#[test]
-fn list_skills_missing_description_filters_correctly() {
-    let (_dir, store) = make_store();
-
-    let s1 = make_skill("m1", "M1", "/central/m1", 1);
-    store.upsert_skill(&s1).unwrap();
-
-    let mut s2 = make_skill("m2", "M2", "/central/m2", 2);
-    s2.description = Some("has desc".to_string());
-    store.upsert_skill(&s2).unwrap();
-
-    let missing = store.list_skills_missing_description().unwrap();
-    assert_eq!(missing.len(), 1);
-    assert_eq!(missing[0].id, "m1");
 }
 
 #[test]

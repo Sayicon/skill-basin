@@ -32,6 +32,8 @@ const ImportModal = ({
 }: ImportModalProps) => {
   if (!open) return null
 
+  const selectedCount = plan.groups.filter((group) => selected[group.name]).length
+
   return (
     <div className="modal-backdrop" onClick={onRequestClose}>
       <div
@@ -132,7 +134,7 @@ const ImportModal = ({
           <button
             className="btn btn-primary"
             onClick={onImport}
-            disabled={loading}
+            disabled={loading || selectedCount === 0}
           >
             <Download size={14} />
             {t('importAndSync')}

@@ -19,7 +19,10 @@ type SkillCardProps = {
   onUpdate: (skill: ManagedSkill) => void
   onDelete: (skillId: string) => void
   onToggleTool: (skill: ManagedSkill, toolId: string) => void
+  onOpenScope: (skill: ManagedSkill) => void
   onOpenDetail: (skill: ManagedSkill) => void
+  getSkillScope: (skill: ManagedSkill) => 'global' | 'project'
+  getSkillProjects: (skill: ManagedSkill) => string[]
   t: TFunction
 }
 
@@ -35,7 +38,10 @@ const SkillCard = ({
   onUpdate,
   onDelete,
   onToggleTool,
+  onOpenScope,
   onOpenDetail,
+  getSkillScope,
+  getSkillProjects,
   t,
 }: SkillCardProps) => {
   const typeKey = skill.source_type.toLowerCase()
@@ -48,6 +54,8 @@ const SkillCard = ({
   )
   const github = getGithubInfo(skill.source_ref)
   const copyValue = (github?.href ?? skill.source_ref ?? '').trim()
+  const skillScope = getSkillScope(skill)
+  const projectCount = getSkillProjects(skill).length
 
   const handleCopy = async () => {
     if (!copyValue) return
@@ -63,7 +71,9 @@ const SkillCard = ({
   const syncedTools: { tool: ToolOption; target: (typeof skill.targets)[0] }[] = []
   const unsyncedTools: ToolOption[] = []
   for (const tool of installedTools) {
-    const target = skill.targets.find((tgt) => tgt.tool === tool.id)
+    const target = skill.targets.find(
+      (tgt) => tgt.tool === tool.id && (tgt.scope ?? 'global') === skillScope,
+    )
     if (target) {
       syncedTools.push({ tool, target })
     } else {
@@ -75,6 +85,7 @@ const SkillCard = ({
   const needsCollapse = syncedTools.length > MAX_VISIBLE_BADGES
   const visibleSynced = expanded ? syncedTools : syncedTools.slice(0, MAX_VISIBLE_BADGES)
   const remainingCount = syncedTools.length - MAX_VISIBLE_BADGES
+  const showUnsyncedTools = expanded || !needsCollapse
 
   return (
     <div className="skill-card">
@@ -130,6 +141,15 @@ const SkillCard = ({
             <span className="dot">•</span>
             {formatRelative(skill.updated_at)}
           </div>
+          <button
+            className={`scope-badge ${skillScope}`}
+            type="button"
+            onClick={() => onOpenScope(skill)}
+          >
+            {skillScope === 'project'
+              ? t('scope.projectCount', { count: projectCount })
+              : t('scope.globalBadge')}
+          </button>
         </div>
         <div className={`tool-matrix${!expanded && needsCollapse ? ' collapsed' : ''}`}>
           {visibleSynced.map(({ tool, target }) => (
@@ -153,18 +173,24 @@ const SkillCard = ({
               {t('moreTools', { count: remainingCount })}
             </button>
           ) : null}
-          {expanded &&
-            unsyncedTools.map((tool) => (
-              <button
-                key={`${skill.id}-${tool.id}`}
-                type="button"
-                className="tool-pill inactive"
-                title={tool.label}
-                onClick={() => void onToggleTool(skill, tool.id)}
-              >
-                {tool.label}
-              </button>
-            ))}
+          {showUnsyncedTools &&
+            unsyncedTools.map((tool) => {
+              const disabled = false
+              return (
+                <button
+                  key={`${skill.id}-${tool.id}`}
+                  type="button"
+                  className={`tool-pill ${disabled ? 'disabled' : 'inactive'}`}
+                  title={tool.label}
+                  onClick={() => {
+                    if (!disabled) void onToggleTool(skill, tool.id)
+                  }}
+                  disabled={disabled}
+                >
+                  {tool.label}
+                </button>
+              )
+            })}
         </div>
       </div>
       <div className="skill-actions-col">

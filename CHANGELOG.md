@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-16
+
+### Added
+- **Project-level skill sync**: Skills can now be synced to selected project directories instead of only global tool directories.
+- **Skill scope controls**: My Skills cards now show a scope badge (`Global` / project count) and include a scope modal for switching between global and project sync.
+- **Scope filtering**: My Skills can be filtered by All / Global / Project scope.
+- **Hermes Agent adapter**: Added global sync support for Hermes Agent via `~/.hermes/skills` ([#54](https://github.com/qufei1993/skills-hub/issues/54)).
+
+### Changed
+- **My Skills filter bar**: The section title now displays the total skill count, search is more compact, and filter controls stay on one line in the default window.
+- **Default window size**: Increased the default desktop window from `800x600` to `960x680`.
+- **macOS close behavior**: Closing the main window now hides it instead of quitting the app; reopening from the Dock restores and focuses the window.
+- **Project sync support matrix**: Project-level sync is now treated as an explicit per-tool capability; tools without a confirmed project skills directory are global-only.
+
+### Fixed
+- **Import takeover for identical skills**: Importing an existing skill can now safely take over same-name targets when the content hash matches.
+- **Unsynced tool re-enable entry**: Tool buttons that were unsynced from a skill remain visible so they can be re-enabled.
+- **SKILL.md metadata parsing**: YAML block scalar descriptions in frontmatter now render correctly in skill cards and detail views.
+
 ## [0.4.3] - 2026-04-11
 
 ### Added
