@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Skills Hub",
-        "width": 800,
-        "height": 600,
+        "width": 960,
+        "height": 680,
         "resizable": true,
         "fullscreen": false
       }

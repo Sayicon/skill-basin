@@ -2248,6 +2248,7 @@ function App() {
               sortBy={sortBy}
               searchQuery={searchQuery}
               scopeFilter={scopeFilter}
+              totalCount={managedSkills.length}
               loading={loading}
               onSortChange={handleSortChange}
               onSearchChange={handleSearchChange}

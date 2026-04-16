@@ -6,6 +6,7 @@ type FilterBarProps = {
   sortBy: 'updated' | 'name'
   searchQuery: string
   scopeFilter: 'all' | 'global' | 'project'
+  totalCount: number
   loading: boolean
   onSortChange: (value: 'updated' | 'name') => void
   onSearchChange: (value: string) => void
@@ -18,6 +19,7 @@ const FilterBar = ({
   sortBy,
   searchQuery,
   scopeFilter,
+  totalCount,
   loading,
   onSortChange,
   onSearchChange,
@@ -33,7 +35,9 @@ const FilterBar = ({
 
   return (
     <div className="filter-bar">
-      <div className="filter-title">{t('allSkills')}</div>
+      <div className="filter-title">
+        {t('allSkills')}（{totalCount}）
+      </div>
       <div className="filter-actions">
         <button className="btn btn-secondary sort-btn" type="button">
           {scopeOptions.find((option) => option.value === scopeFilter)?.label ?? t('scope.all')}
