@@ -157,6 +157,10 @@ function App() {
         const parts = raw.split('|')
         return t('errors.toolNotWritable', { tool: parts[1] ?? '', path: parts[2] ?? '' })
       }
+      if (raw.startsWith('PROJECT_SCOPE_UNSUPPORTED|')) {
+        const tool = raw.split('|')[1] ?? ''
+        return t('projectSync.unsupportedTool', { tool })
+      }
       if (raw.includes('未在该仓库中发现可导入的 Skills')) {
         return t('errors.noSkillsFoundInRepo')
       }
@@ -533,6 +537,15 @@ function App() {
   const installedTools = useMemo(
     () => tools.filter((tool) => installedToolIds.includes(tool.id)),
     [tools, installedToolIds],
+  )
+  const toolSupportsProjectScope = useCallback(
+    (toolId: string) =>
+      tools.find((tool) => tool.id === toolId)?.supports_project_scope ?? true,
+    [tools],
+  )
+  const installedProjectToolIds = useMemo(
+    () => installedToolIds.filter((toolId) => toolSupportsProjectScope(toolId)),
+    [installedToolIds, toolSupportsProjectScope],
   )
 
   const getSkillProjects = useCallback(
@@ -1765,80 +1778,83 @@ function App() {
 
   const handleSyncAllManagedToTools = useCallback(
     async (toolIds: string[]) => {
-    if (managedSkills.length === 0) return
+      if (managedSkills.length === 0) return
       const installedIds = uniqueToolIdsBySkillsDir(
         toolIds.filter((id) => isInstalled(id)),
       )
       if (installedIds.length === 0) return
 
-    setLoading(true)
-    setLoadingStartAt(Date.now())
-    setError(null)
-    try {
-      const collectedErrors: { title: string; message: string }[] = []
-      for (let si = 0; si < managedSkills.length; si++) {
-        const skill = managedSkills[si]
-        const skillScope = getSkillScope(skill)
-        const projects = getSkillProjects(skill)
+      setLoading(true)
+      setLoadingStartAt(Date.now())
+      setError(null)
+      try {
+        const collectedErrors: { title: string; message: string }[] = []
+        for (let si = 0; si < managedSkills.length; si++) {
+          const skill = managedSkills[si]
+          const skillScope = getSkillScope(skill)
+          const projects = getSkillProjects(skill)
           for (let ti = 0; ti < installedIds.length; ti++) {
             const toolId = installedIds[ti]
-          const toolLabel = tools.find((t) => t.id === toolId)?.label ?? toolId
-          if (skillScope === 'project') {
-            if (projects.length === 0) continue
-          }
-          setActionMessage(
-            t('actions.syncStep', {
-              index: si + 1,
-              total: managedSkills.length,
-              name: skill.name,
-              tool: toolLabel,
-            }),
-          )
-          try {
+            const toolLabel = tools.find((t) => t.id === toolId)?.label ?? toolId
             if (skillScope === 'project') {
-              for (const projectPath of projects) {
+              if (!toolSupportsProjectScope(toolId)) continue
+              if (projects.length === 0) continue
+            }
+            setActionMessage(
+              t('actions.syncStep', {
+                index: si + 1,
+                total: managedSkills.length,
+                name: skill.name,
+                tool: toolLabel,
+              }),
+            )
+            try {
+              if (skillScope === 'project') {
+                for (const projectPath of projects) {
+                  await invokeTauri('sync_skill_to_tool', {
+                    sourcePath: skill.central_path,
+                    skillId: skill.id,
+                    tool: toolId,
+                    name: skill.name,
+                    overwriteIfSameContent: true,
+                    scope: 'project',
+                    projectPath,
+                  })
+                }
+              } else {
                 await invokeTauri('sync_skill_to_tool', {
                   sourcePath: skill.central_path,
                   skillId: skill.id,
                   tool: toolId,
                   name: skill.name,
                   overwriteIfSameContent: true,
-                  scope: 'project',
-                  projectPath,
+                  scope: 'global',
                 })
               }
-            } else {
-              await invokeTauri('sync_skill_to_tool', {
-                sourcePath: skill.central_path,
-                skillId: skill.id,
-                tool: toolId,
-                name: skill.name,
-                overwriteIfSameContent: true,
-                scope: 'global',
+            } catch (err) {
+              const raw = err instanceof Error ? err.message : String(err)
+              if (raw.startsWith('TOOL_NOT_INSTALLED|') || raw.startsWith('TOOL_NOT_WRITABLE|')) {
+                continue
+              }
+              collectedErrors.push({
+                title: t('errors.syncFailedTitle', {
+                  name: skill.name,
+                  tool: toolLabel,
+                }),
+                message: raw,
               })
             }
-          } catch (err) {
-            const raw = err instanceof Error ? err.message : String(err)
-            if (raw.startsWith('TOOL_NOT_INSTALLED|') || raw.startsWith('TOOL_NOT_WRITABLE|')) continue
-            collectedErrors.push({
-              title: t('errors.syncFailedTitle', {
-                name: skill.name,
-                tool: toolLabel,
-              }),
-              message: raw,
-            })
           }
         }
+        setActionMessage(t('status.syncCompleted'))
+        setSuccessToastMessage(t('status.syncCompleted'))
+        setActionMessage(null)
+        await loadManagedSkills()
+        if (collectedErrors.length > 0) showActionErrors(collectedErrors)
+      } finally {
+        setLoading(false)
+        setLoadingStartAt(null)
       }
-      setActionMessage(t('status.syncCompleted'))
-      setSuccessToastMessage(t('status.syncCompleted'))
-      setActionMessage(null)
-      await loadManagedSkills()
-      if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-    } finally {
-      setLoading(false)
-      setLoadingStartAt(null)
-    }
     },
     [
       invokeTauri,
@@ -1850,6 +1866,7 @@ function App() {
       showActionErrors,
       t,
       tools,
+      toolSupportsProjectScope,
       uniqueToolIdsBySkillsDir,
     ],
   )
@@ -1935,7 +1952,7 @@ function App() {
           })
         }
         if (nextScope === 'project' && projects.length > 0) {
-          for (const toolId of installedToolIds) {
+          for (const toolId of installedProjectToolIds) {
             for (const projectPath of projects) {
               await invokeTauri('sync_skill_to_tool', {
                 sourcePath: skill.central_path,
@@ -1994,6 +2011,7 @@ function App() {
       getSkillProjects,
       getSkillScope,
       installedToolIds,
+      installedProjectToolIds,
       invokeTauri,
       loadManagedSkills,
       loading,
@@ -2027,6 +2045,10 @@ function App() {
       const skillScope = getSkillScope(skill)
       const projects = getSkillProjects(skill)
       if (skillScope === 'project') {
+        if (!toolSupportsProjectScope(toolId)) {
+          setError(t('projectSync.unsupportedTool', { tool: toolLabel }))
+          return
+        }
         if (projects.length === 0) {
           setError(t('projectSync.noProjectsForSync'))
           setScopeModalSkill(skill)
@@ -2121,7 +2143,16 @@ function App() {
         setLoadingStartAt(null)
       }
     },
-    [getSkillProjects, getSkillScope, invokeTauri, loadManagedSkills, loading, t, tools],
+    [
+      getSkillProjects,
+      getSkillScope,
+      invokeTauri,
+      loadManagedSkills,
+      loading,
+      t,
+      tools,
+      toolSupportsProjectScope,
+    ],
   )
 
   const handleToggleToolForSkill = useCallback(
@@ -2248,7 +2279,7 @@ function App() {
               sortBy={sortBy}
               searchQuery={searchQuery}
               scopeFilter={scopeFilter}
-              totalCount={managedSkills.length}
+              totalCount={visibleSkills.length}
               loading={loading}
               onSortChange={handleSortChange}
               onSearchChange={handleSearchChange}

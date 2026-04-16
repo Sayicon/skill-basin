@@ -19,6 +19,7 @@ fn adapter_by_key_finds_new_tools() {
     assert!(adapter_by_key("openclaw").is_some());
     assert!(adapter_by_key("command_code").is_some());
     assert!(adapter_by_key("qwen_code").is_some());
+    assert!(adapter_by_key("hermes_agent").is_some());
 }
 
 #[test]
@@ -62,6 +63,10 @@ fn project_relative_skills_dir_maps_supported_agents() {
 
     let qwen = adapter_by_key("qwen_code").unwrap();
     assert_eq!(project_relative_skills_dir(&qwen), ".qwen/skills");
+
+    let hermes = adapter_by_key("hermes_agent").unwrap();
+    assert_eq!(project_relative_skills_dir(&hermes), ".hermes/skills");
+    assert!(!supports_project_scope(&hermes));
 }
 
 #[test]

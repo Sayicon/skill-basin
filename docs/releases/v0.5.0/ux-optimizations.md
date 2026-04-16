@@ -76,3 +76,34 @@
 - `src-tauri/src/commands/mod.rs`
 - `src/App.tsx`
 - `src/components/skills/modals/ImportModal.tsx`
+
+---
+
+## 新增：Hermes Agent 全局同步支持
+
+**关联 Issue：** https://github.com/qufei1993/skills-hub/issues/54
+
+**状态：** 已在本地验证，纳入 v0.5.0。
+
+**变更：** 新增 Hermes Agent 工具适配，支持将 Skill 全局同步到 `~/.hermes/skills`。
+
+**原因：** Issue #54 请求支持 Hermes Agent。调研 Hermes Agent 官方文档后，仅确认默认 `HERMES_HOME` 为 `~/.hermes`，Skills 位于 `HERMES_HOME/skills`。没有找到明确的项目级 skills 目录规范，因此本次只声明并实现全局同步支持，避免为项目级同步捏造路径。
+
+**实现方式：**
+- 新增 `hermes_agent` 工具 key，展示名为 `Hermes Agent`。
+- 全局 skills 目录配置为 `.hermes/skills`，安装检测目录为 `.hermes`。
+- `supports_project_scope` 对 Hermes Agent 返回 `false`。
+- 后端在项目级同步入口拒绝不支持项目级同步的工具，返回 `PROJECT_SCOPE_UNSUPPORTED|<tool>`。
+- 前端在项目级批量同步时跳过 Hermes Agent；用户在项目级 Skill 上单独点击 Hermes Agent 时显示“不支持项目级同步”提示。
+- README 和 CHANGELOG 同步标注 Hermes Agent 仅支持全局同步，并列入 v0.5.0。
+
+**涉及文件：**
+- `src-tauri/src/core/tool_adapters/mod.rs`
+- `src-tauri/src/commands/mod.rs`
+- `src-tauri/src/core/tests/tool_adapters.rs`
+- `src/App.tsx`
+- `src/i18n/resources.ts`
+- `README.md`
+- `docs/README.zh.md`
+- `CHANGELOG.md`
+- `docs/CHANGELOG.zh.md`

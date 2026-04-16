@@ -553,6 +553,9 @@ pub async fn sync_skill_to_tool(
     tauri::async_runtime::spawn_blocking(move || {
         let adapter = adapter_by_key(&tool).ok_or_else(|| anyhow::anyhow!("unknown tool"))?;
         let scope = normalize_scope(scope.as_deref())?;
+        if scope == "project" && !supports_project_scope(&adapter) {
+            anyhow::bail!("PROJECT_SCOPE_UNSUPPORTED|{}", adapter.id.as_key());
+        }
         let project_root = if scope == "project" {
             let raw = projectPath
                 .as_deref()

@@ -47,6 +47,7 @@ pub enum ToolId {
     Droid,
     Windsurf,
     Moltbot,
+    HermesAgent,
 }
 
 impl ToolId {
@@ -95,6 +96,7 @@ impl ToolId {
             ToolId::Droid => "droid",
             ToolId::Windsurf => "windsurf",
             ToolId::Moltbot => "moltbot",
+            ToolId::HermesAgent => "hermes_agent",
         }
     }
 }
@@ -419,6 +421,13 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
             relative_skills_dir: ".moltbot/skills",
             relative_detect_dir: ".moltbot",
         },
+        ToolAdapter {
+            id: ToolId::HermesAgent,
+            display_name: "Hermes Agent",
+            // Hermes stores managed skills under HERMES_HOME/skills; default HERMES_HOME is ~/.hermes.
+            relative_skills_dir: ".hermes/skills",
+            relative_detect_dir: ".hermes",
+        },
     ]
 }
 
@@ -455,8 +464,7 @@ pub fn resolve_project_path(adapter: &ToolAdapter, project_root: &Path) -> Resul
 }
 
 pub fn supports_project_scope(adapter: &ToolAdapter) -> bool {
-    let _ = adapter;
-    true
+    adapter.id != ToolId::HermesAgent
 }
 
 pub fn project_relative_skills_dir(adapter: &ToolAdapter) -> &'static str {
@@ -501,7 +509,8 @@ pub fn project_relative_skills_dir(adapter: &ToolAdapter) -> &'static str {
         | ToolId::OpenClaude
         | ToolId::QoderWork
         | ToolId::Clawdbot
-        | ToolId::Moltbot => adapter.relative_skills_dir,
+        | ToolId::Moltbot
+        | ToolId::HermesAgent => adapter.relative_skills_dir,
     }
 }
 

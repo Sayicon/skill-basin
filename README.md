@@ -33,7 +33,7 @@ A cross-platform desktop app (Tauri + React) to manage Agent Skills in one place
 
 ## Supported AI Coding Tools
 
-Project skills dirs are relative to the selected project root. All adapters currently support project-level sync.
+Project skills dirs are relative to the selected project root. Tools marked `N/A` do not have a confirmed project-level skills directory and are supported for global sync only.
 
 | tool key | Display name | global skills dir (relative to `~`) | project skills dir (relative to project) | detected if exists (relative to `~`) |
 | --- | --- | --- | --- | --- |
@@ -80,6 +80,7 @@ Project skills dirs are relative to the selected project root. All adapters curr
 | `droid` | Droid | `.factory/skills` | `.factory/skills` | `.factory` |
 | `windsurf` | Windsurf | `.codeium/windsurf/skills` | `.windsurf/skills` | `.codeium/windsurf` |
 | `moltbot` | MoltBot | `.moltbot/skills` | `.moltbot/skills` | `.moltbot` |
+| `hermes_agent` | Hermes Agent | `.hermes/skills` | N/A | `.hermes` |
 
 ## Development
 

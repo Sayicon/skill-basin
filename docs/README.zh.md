@@ -30,7 +30,7 @@
 
 ## 支持的 AI 编程工具
 
-项目级 skills 目录相对所选项目根目录。当前所有工具适配器都支持项目级同步。
+项目级 skills 目录相对所选项目根目录。标记为“不支持”的工具尚未确认项目级 skills 目录，仅支持全局同步。
 
 | tool key | 工具 | 全局 skills 目录（相对 `~`） | 项目级 skills 目录（相对项目根目录） | 存在即视为已安装（相对 `~`） |
 | --- | --- | --- | --- | --- |
@@ -77,6 +77,7 @@
 | `droid` | Droid | `.factory/skills` | `.factory/skills` | `.factory` |
 | `windsurf` | Windsurf | `.codeium/windsurf/skills` | `.windsurf/skills` | `.codeium/windsurf` |
 | `moltbot` | MoltBot | `.moltbot/skills` | `.moltbot/skills` | `.moltbot` |
+| `hermes_agent` | Hermes Agent | `.hermes/skills` | 不支持 | `.hermes` |
 
 完整路径规则与检测逻辑见 [`src-tauri/src/core/tool_adapters/mod.rs`](../src-tauri/src/core/tool_adapters/mod.rs)。
 
