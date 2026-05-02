@@ -111,6 +111,7 @@ function App() {
   const [tagEditorSkill, setTagEditorSkill] = useState<ManagedSkill | null>(null)
   const [pendingDeleteTag, setPendingDeleteTag] = useState<TagWithCountDto | null>(null)
   const [addModalTab, setAddModalTab] = useState<'local' | 'git'>('git')
+  const [addModalTagIds, setAddModalTagIds] = useState<number[]>([])
   const [featuredSkills, setFeaturedSkills] = useState<FeaturedSkillDto[]>([])
   const [featuredLoading, setFeaturedLoading] = useState(false)
   const [exploreFilter, setExploreFilter] = useState('')
@@ -819,7 +820,23 @@ function App() {
 
   const handleOpenAdd = useCallback(() => {
     setShowAddModal(true)
+    setAddModalTagIds([])
   }, [])
+
+  const applySelectedAddModalTags = useCallback(
+    async (skillId: string, skillName: string) => {
+      if (addModalTagIds.length === 0) return
+      try {
+        await invokeTauri('set_skill_tags', {
+          skillId,
+          tagIds: addModalTagIds,
+        })
+      } catch {
+        toast.error(t('tagsApplyFailed', { name: skillName }))
+      }
+    },
+    [addModalTagIds, invokeTauri, t],
+  )
 
   const handleCancelLoading = useCallback(() => {
     void invokeTauri('cancel_current_operation').catch(() => {})
@@ -829,7 +846,10 @@ function App() {
   }, [invokeTauri])
 
   const handleCloseAdd = useCallback(() => {
-    if (!loading) setShowAddModal(false)
+    if (!loading) {
+      setShowAddModal(false)
+      setAddModalTagIds([])
+    }
   }, [loading])
 
   const handleCloseImport = useCallback(() => {
@@ -893,6 +913,14 @@ function App() {
     },
     [],
   )
+
+  const handleToggleAddModalTag = useCallback((tagId: number) => {
+    setAddModalTagIds((current) =>
+      current.includes(tagId)
+        ? current.filter((id) => id !== tagId)
+        : [...current, tagId],
+    )
+  }, [])
 
   const handleToggleTagFilter = useCallback((tagId: number) => {
     setSelectedTagIds((current) =>
@@ -1309,6 +1337,7 @@ function App() {
             name: localName.trim() || undefined,
           },
         )
+        await applySelectedAddModalTags(created.skill_id, created.name)
         {
           const selectedInstalledIds = tools
             .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
@@ -1359,6 +1388,7 @@ function App() {
         setActionMessage(null)
         setShowAddModal(false)
         await loadManagedSkills()
+        await loadTags()
       } else {
         setLocalCandidatesBasePath(basePath)
         setLocalCandidates(candidates)
@@ -1424,6 +1454,7 @@ function App() {
             name: gitName.trim() || undefined,
           },
         )
+        await applySelectedAddModalTags(created.skill_id, created.name)
         {
           const selectedInstalledIds = tools
             .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
@@ -1488,6 +1519,7 @@ function App() {
             name: gitName.trim() || undefined,
             },
           )
+          await applySelectedAddModalTags(created.skill_id, created.name)
           {
             const selectedInstalledIds = tools
               .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
@@ -1557,6 +1589,7 @@ function App() {
                 name: gitName.trim() || undefined,
               },
             )
+            await applySelectedAddModalTags(created.skill_id, created.name)
             {
               const selectedInstalledIds = tools
                 .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
@@ -1633,6 +1666,7 @@ function App() {
       setActionMessage(null)
       setShowAddModal(false)
       await loadManagedSkills()
+      await loadTags()
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -1730,6 +1764,7 @@ function App() {
               name: localName.trim() || undefined,
             },
           )
+          await applySelectedAddModalTags(created.skill_id, created.name)
           {
             const selectedInstalledIds = tools
               .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
@@ -1794,6 +1829,7 @@ function App() {
       setActionMessage(null)
       setShowAddModal(false)
       await loadManagedSkills()
+      await loadTags()
       if (collectedErrors.length > 0) showActionErrors(collectedErrors)
     } finally {
       setLoading(false)
@@ -1840,6 +1876,7 @@ function App() {
             name: gitName.trim() || undefined,
             },
           )
+          await applySelectedAddModalTags(created.skill_id, created.name)
           {
             const selectedInstalledIds = tools
               .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
@@ -1908,6 +1945,7 @@ function App() {
       setGitCandidatesRepoUrl('')
       setShowAddModal(false)
       await loadManagedSkills()
+      await loadTags()
       if (collectedErrors.length > 0) showActionErrors(collectedErrors)
     } finally {
       setLoading(false)
@@ -2539,6 +2577,8 @@ function App() {
         localName={localName}
         gitUrl={gitUrl}
         gitName={gitName}
+        tags={tags}
+        selectedTagIds={addModalTagIds}
         syncTargets={syncTargets}
         installedTools={installedTools}
         toolStatus={toolStatus}
@@ -2549,6 +2589,7 @@ function App() {
         onLocalNameChange={setLocalName}
         onGitUrlChange={setGitUrl}
         onGitNameChange={setGitName}
+        onToggleTag={handleToggleAddModalTag}
         onSyncTargetChange={handleSyncTargetChange}
         onSubmit={addModalTab === 'local' ? handleCreateLocal : handleCreateGit}
         t={t}

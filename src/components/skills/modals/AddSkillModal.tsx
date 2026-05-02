@@ -1,6 +1,7 @@
 import { memo } from 'react'
+import { Check } from 'lucide-react'
 import type { TFunction } from 'i18next'
-import type { ToolOption, ToolStatusDto } from '../types'
+import type { TagWithCountDto, ToolOption, ToolStatusDto } from '../types'
 
 type AddSkillModalProps = {
   open: boolean
@@ -11,6 +12,8 @@ type AddSkillModalProps = {
   localName: string
   gitUrl: string
   gitName: string
+  tags: TagWithCountDto[]
+  selectedTagIds: number[]
   syncTargets: Record<string, boolean>
   installedTools: ToolOption[]
   toolStatus: ToolStatusDto | null
@@ -21,6 +24,7 @@ type AddSkillModalProps = {
   onLocalNameChange: (value: string) => void
   onGitUrlChange: (value: string) => void
   onGitNameChange: (value: string) => void
+  onToggleTag: (tagId: number) => void
   onSyncTargetChange: (toolId: string, checked: boolean) => void
   onSubmit: () => void
   t: TFunction
@@ -35,6 +39,8 @@ const AddSkillModal = ({
   localName,
   gitUrl,
   gitName,
+  tags,
+  selectedTagIds,
   syncTargets,
   installedTools,
   toolStatus,
@@ -45,6 +51,7 @@ const AddSkillModal = ({
   onLocalNameChange,
   onGitUrlChange,
   onGitNameChange,
+  onToggleTag,
   onSyncTargetChange,
   onSubmit,
   t,
@@ -140,6 +147,32 @@ const AddSkillModal = ({
               </div>
             </>
           )}
+
+          <div className="form-group">
+            <label className="label">{t('addTags')}</label>
+            {tags.length > 0 ? (
+              <div className="add-tags-list">
+                {tags.map((tag) => {
+                  const selected = selectedTagIds.includes(tag.id)
+                  return (
+                    <button
+                      key={tag.id}
+                      className={`add-tag-pill${selected ? ' selected' : ''}`}
+                      type="button"
+                      onClick={() => onToggleTag(tag.id)}
+                    >
+                      <span className="add-tag-check">
+                        {selected ? <Check size={12} /> : null}
+                      </span>
+                      <span>#{tag.name}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="helper-text">{t('noTagsYet')}</div>
+            )}
+          </div>
 
           <div className="form-group">
             <label className="label">{t('installToTools')}</label>

@@ -742,6 +742,59 @@
   cursor: not-allowed;
 }
 
+.add-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 148px;
+  overflow: auto;
+  padding: 2px 0 2px;
+}
+
+.add-tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-element);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-tag-pill:hover {
+  color: var(--accent-primary);
+  border-color: rgba(37, 99, 235, 0.35);
+  background: var(--accent-soft-bg);
+}
+
+.add-tag-pill.selected {
+  border-color: var(--accent-primary);
+  background: var(--accent-soft-bg);
+  color: var(--accent-primary);
+}
+
+.add-tag-check {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary-fg);
+  background: var(--bg-app);
+}
+
+.add-tag-pill.selected .add-tag-check {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
 .status-badge {
   width: 6px;
   height: 6px;

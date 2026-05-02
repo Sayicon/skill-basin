@@ -26,7 +26,7 @@ v0.6.0 只实现标签功能。
 - 给 Skill 添加一个或多个自定义标签。
 - 在 My Skills 页面按标签筛选 Skill。
 - 找出还没有设置标签的 Skill。
-- 在独立的 Tags 子页面管理标签。
+- 通过独立的 Tags 页面查看和编辑标签。
 
 标签不用于：
 
@@ -93,7 +93,7 @@ Tags                              Match any
 [ ] Rust                      2
 [ ] Docs                      6
 
-Clear all             Manage Tags...
+Clear all
 ```
 
 筛选逻辑使用 `OR`：
@@ -116,19 +116,19 @@ Clear all             Manage Tags...
 - 点击外部关闭下拉。
 - `Clear all` 立即清空标签筛选。
 
-### 5. 标签管理是 My Skills 的子页面
+### 5. 标签页面是独立入口
 
-标签管理不放在 Settings 中，避免入口过深。
+标签不放在 Settings 中，避免入口过深。
 
 入口：
 
-- `Tags` 下拉底部的 `Manage Tags...`
-- Skill 详情页 Tags 区块中的管理入口（后续可补）
+- 顶部主导航的 `Tags` / `标签`
+- My Skills 页面标签筛选区的辅助入口（保留一个快速跳转点）
 
 页面层级：
 
 ```text
-My Skills / Tags
+Tags
 ```
 
 页面内容：
@@ -169,21 +169,16 @@ frontend-design    #Frontend #Docs
 无标签：
 
 ```text
-legacy-shell-helper    No tags
+legacy-shell-helper
 ```
 
-`No tags` 使用弱样式，点击后打开该 Skill 的标签编辑入口。
+没有标签时不展示空文案，只保留标签编辑入口。
 
 ### 标签编辑
 
 每个 Skill 需要有入口编辑标签。
 
-第一版可放在：
-
-- Skill 卡片更多菜单中的 `Edit Tags`
-- 或 Skill 详情页的 `Tags` 区块
-
-不建议在卡片右侧长期增加多个图标按钮，避免卡片操作区过载。
+当前实现使用 Skill 卡片右侧的标签图标按钮作为快捷入口，点击后打开标签编辑。
 
 编辑内容：
 
@@ -200,7 +195,7 @@ Edit Tags: frontend-design
 
 ### 新建标签
 
-新建标签入口在 `My Skills / Tags` 页面。
+新建标签入口在 `Tags` 页面。
 
 规则：
 
@@ -325,7 +320,7 @@ type TagDto = {
 - `src/components/skills/types.ts`
 - `src/components/skills/FilterBar.tsx`
 - `src/components/skills/SkillCard.tsx`
-- 新增 Tags 子页面组件
+- 新增 Tags 页面组件
 - 新增标签编辑弹窗或详情页 Tags 区块
 - `src/i18n/resources.ts`
 - `src/App.css`
@@ -358,8 +353,6 @@ selectedTags 包含 Untagged -> skill.tags.length === 0
 
 - Tags
 - Untagged
-- No tags
-- Manage Tags
 - New Tag
 - Rename
 - Delete
@@ -386,11 +379,12 @@ selectedTags 包含 Untagged -> skill.tags.length === 0
 - 多选标签即时筛选。
 - `Untagged` 筛选正确。
 - `Clear all` 清空筛选。
-- `Manage Tags...` 进入 Tags 子页面。
+- 顶部 `Tags` 进入标签页面。
 - Tags 页面 `Review` 能筛选无标签 Skill。
 - Tags 页面 `View` 能筛选指定标签。
-- 无标签 Skill 显示 `No tags`。
+- 无标签 Skill 不显示空文案。
 - 编辑标签后卡片和筛选结果刷新。
+- 在添加 Skill 弹窗中可直接选择标签，创建后自动绑定。
 
 ---
 
@@ -403,7 +397,8 @@ v0.6.0 包含：
 - Skill 标签关联编辑。
 - My Skills 标签多选筛选。
 - `Untagged` 虚拟筛选项。
-- My Skills / Tags 标签管理子页面。
+- 独立 Tags 页面。
+- 添加 Skill 时选择标签。
 - 中英文文案。
 - 后端和前端测试。
 
