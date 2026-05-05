@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-05
+
+### Added
+- **Skill tags**: Add custom tags to managed skills for easier organization and filtering.
+- **Tags page**: Manage tags from a dedicated Tags page, including create, rename, delete, and quick navigation back to filtered My Skills views.
+- **Tag filtering**: Filter My Skills by one or more tags with OR matching, including a virtual `Untagged` filter for skills without tags.
+- **Per-skill tag editor**: Edit a skill's tag assignments directly from the skill card.
+- **Import search**: Search discovered skill candidates by name, description, or path before importing from a local directory or Git repository.
+
+### Changed
+- **My Skills filter bar**: Removed the manual refresh button; install, delete, sync, and tag-edit flows already refresh the list automatically.
+
+### Fixed
+- **Chinese filter bar layout**: Removing the refresh button fixes the cramped button layout in Chinese.
+- **Discovered skills review**: The discovered skills review dialog now supports search and keeps selection counts aligned with filtered results.
+
 ## [0.5.0] - 2026-04-16
 
 ### Added
