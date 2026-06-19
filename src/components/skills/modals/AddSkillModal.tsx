@@ -1,6 +1,13 @@
-import { memo } from 'react'
+import { memo, useId, type SetStateAction } from 'react'
 import { Check } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import ScopeSelector from '../ScopeSelector'
+import {
+  getUnsupportedToolsForScope,
+  isToolUnsupportedForScope,
+  normalizeProjectPaths,
+  type InstallScope,
+} from '../installScope'
 import type { TagWithCountDto, ToolOption, ToolStatusDto } from '../types'
 
 type AddSkillModalProps = {
@@ -17,6 +24,9 @@ type AddSkillModalProps = {
   syncTargets: Record<string, boolean>
   installedTools: ToolOption[]
   toolStatus: ToolStatusDto | null
+  installScope: InstallScope
+  installProjects: string[]
+  recentProjects: string[]
   onRequestClose: () => void
   onTabChange: (tab: 'local' | 'git') => void
   onLocalPathChange: (value: string) => void
@@ -26,6 +36,9 @@ type AddSkillModalProps = {
   onGitNameChange: (value: string) => void
   onToggleTag: (tagId: number) => void
   onSyncTargetChange: (toolId: string, checked: boolean) => void
+  onInstallScopeChange: (scope: InstallScope) => void
+  onInstallProjectsChange: (projects: SetStateAction<string[]>) => void
+  onPickProject: () => Promise<string | undefined>
   onSubmit: () => void
   t: TFunction
 }
@@ -44,6 +57,9 @@ const AddSkillModal = ({
   syncTargets,
   installedTools,
   toolStatus,
+  installScope,
+  installProjects,
+  recentProjects,
   onRequestClose,
   onTabChange,
   onLocalPathChange,
@@ -53,10 +69,23 @@ const AddSkillModal = ({
   onGitNameChange,
   onToggleTag,
   onSyncTargetChange,
+  onInstallScopeChange,
+  onInstallProjectsChange,
+  onPickProject,
   onSubmit,
   t,
 }: AddSkillModalProps) => {
+  const installScopeTitleId = useId()
+
   if (!open) return null
+
+  const projectRequired =
+    installScope === 'project' &&
+    normalizeProjectPaths(installProjects).length === 0
+  const unsupportedTools = getUnsupportedToolsForScope(
+    installedTools,
+    installScope,
+  )
 
   return (
     <div
@@ -175,31 +204,75 @@ const AddSkillModal = ({
           </div>
 
           <div className="form-group">
+            <div className="label" id={installScopeTitleId}>
+              {t('installScope.title')}
+            </div>
+            <div className="helper-text install-scope-help">
+              {t('installScope.help')}
+            </div>
+            <ScopeSelector
+              scope={installScope}
+              projects={installProjects}
+              recentProjects={recentProjects}
+              disabled={loading}
+              ariaLabelledBy={installScopeTitleId}
+              onScopeChange={onInstallScopeChange}
+              onProjectsChange={onInstallProjectsChange}
+              onPickProject={onPickProject}
+              t={t}
+            />
+          </div>
+
+          <div className="form-group">
             <label className="label">{t('installToTools')}</label>
             {toolStatus ? (
               <div className="tool-matrix">
-                {installedTools.map((tool) => (
-                  <label
-                    key={tool.id}
-                    className={`tool-pill-toggle${
-                      syncTargets[tool.id] ? ' active' : ''
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(syncTargets[tool.id])}
-                      onChange={(event) =>
-                        onSyncTargetChange(tool.id, event.target.checked)
+                {installedTools.map((tool) => {
+                  const unsupported = isToolUnsupportedForScope(
+                    tool,
+                    installScope,
+                  )
+
+                  return (
+                    <label
+                      key={tool.id}
+                      className={`tool-pill-toggle${
+                        syncTargets[tool.id] ? ' active' : ''
+                      }${unsupported ? ' disabled' : ''}`}
+                      title={
+                        unsupported
+                          ? t('installScope.unsupportedTool', {
+                              tool: tool.label,
+                            })
+                          : undefined
                       }
-                    />
-                    {syncTargets[tool.id] ? <span className="status-badge" /> : null}
-                    {tool.label}
-                  </label>
-                ))}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(syncTargets[tool.id])}
+                        onChange={(event) =>
+                          onSyncTargetChange(tool.id, event.target.checked)
+                        }
+                        disabled={unsupported}
+                      />
+                      {syncTargets[tool.id] ? (
+                        <span className="status-badge" />
+                      ) : null}
+                      {tool.label}
+                    </label>
+                  )
+                })}
               </div>
             ) : (
               <div className="helper-text">{t('detectingTools')}</div>
             )}
+            {unsupportedTools.length > 0 ? (
+              <div className="helper-text" role="status">
+                {t('installScope.unsupportedSelectedHint', {
+                  tools: unsupportedTools.map((tool) => tool.label).join(', '),
+                })}
+              </div>
+            ) : null}
             <div className="helper-text">{t('syncAfterCreate')}</div>
           </div>
         </div>
@@ -214,7 +287,7 @@ const AddSkillModal = ({
           <button
             className="btn btn-primary"
             onClick={onSubmit}
-            disabled={loading}
+            disabled={loading || projectRequired}
           >
             {addModalTab === 'local' ? t('create') : t('install')}
           </button>

@@ -740,6 +740,12 @@
 .tool-pill-toggle.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.install-scope-help {
+  margin-bottom: 8px;
 }
 
 .add-tags-list {

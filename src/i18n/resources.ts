@@ -112,6 +112,13 @@ export const resources = {
       updatedLabel: 'Updated',
       statusLabel: 'Status',
       addSkillTitle: 'Add skill',
+      installScope: {
+        title: 'Install scope',
+        help: 'Choose where all skills in this installation will be available.',
+        unsupportedTool: '{{tool}} does not support project installation.',
+        unsupportedSelectedHint:
+          'Project installation is unavailable for: {{tools}}.',
+      },
       installToTools: 'Install to tools',
       addTags: 'Add tags',
       noTagsYet: 'No tags yet.',
@@ -491,6 +498,12 @@ export const resources = {
       updatedLabel: '更新时间',
       statusLabel: '状态',
       addSkillTitle: '添加 Skill',
+      installScope: {
+        title: '安装范围',
+        help: '选择本次安装的所有 Skill 在哪里可用。',
+        unsupportedTool: '{{tool}} 不支持项目安装。',
+        unsupportedSelectedHint: '以下工具不支持项目安装：{{tools}}。',
+      },
       installToTools: '安装到工具',
       addTags: '添加标签',
       noTagsYet: '暂无标签。',

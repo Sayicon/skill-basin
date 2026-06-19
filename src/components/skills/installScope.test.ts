@@ -2,8 +2,13 @@ import { describe, expect, it } from 'vitest'
 import {
   buildInstallSyncJobs,
   filterTargetsForScope,
+  getAddedProjectPaths,
   getAvailableRecentProjects,
+  getUnsupportedToolsForScope,
+  isLatestSaveBatch,
+  isToolUnsupportedForScope,
   normalizeProjectPaths,
+  resolveProjectPathsUpdate,
 } from './installScope'
 import type { ToolOption } from './types'
 
@@ -38,6 +43,35 @@ describe('getAvailableRecentProjects', () => {
   })
 })
 
+describe('getAddedProjectPaths', () => {
+  it('returns normalized paths newly added to the selection', () => {
+    expect(
+      getAddedProjectPaths(
+        ['/repo/a', ' /repo/b '],
+        ['/repo/a', '/repo/b', ' /repo/c ', '/repo/c', ''],
+      ),
+    ).toEqual(['/repo/c'])
+  })
+})
+
+describe('resolveProjectPathsUpdate', () => {
+  it('applies functional updates to the latest project paths', () => {
+    expect(
+      resolveProjectPathsUpdate(
+        ['/repo/a'],
+        (current) => [...current, '/repo/b'],
+      ),
+    ).toEqual(['/repo/a', '/repo/b'])
+  })
+})
+
+describe('isLatestSaveBatch', () => {
+  it('only accepts the current save batch', () => {
+    expect(isLatestSaveBatch(2, 2)).toBe(true)
+    expect(isLatestSaveBatch(1, 2)).toBe(false)
+  })
+})
+
 describe('filterTargetsForScope', () => {
   it('keeps global targets unchanged', () => {
     expect(
@@ -57,6 +91,22 @@ describe('filterTargetsForScope', () => {
         'project',
       ),
     ).toEqual({ cursor: true, hermes: false, codex: true })
+  })
+})
+
+describe('isToolUnsupportedForScope', () => {
+  it('only marks explicitly unsupported tools in project scope', () => {
+    expect(isToolUnsupportedForScope(tools[0], 'project')).toBe(false)
+    expect(isToolUnsupportedForScope(tools[1], 'project')).toBe(true)
+    expect(isToolUnsupportedForScope(tools[2], 'project')).toBe(false)
+    expect(isToolUnsupportedForScope(tools[1], 'global')).toBe(false)
+  })
+})
+
+describe('getUnsupportedToolsForScope', () => {
+  it('returns unsupported tools only in project scope', () => {
+    expect(getUnsupportedToolsForScope(tools, 'project')).toEqual([tools[1]])
+    expect(getUnsupportedToolsForScope(tools, 'global')).toEqual([])
   })
 })
 

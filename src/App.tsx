@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import type { Update } from '@tauri-apps/plugin-updater'
 import './App.css'
 import { useTranslation } from 'react-i18next'
@@ -22,6 +30,13 @@ import NewToolsModal from './components/skills/modals/NewToolsModal'
 import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import SettingsPage from './components/skills/SettingsPage'
+import {
+  filterTargetsForScope,
+  getAddedProjectPaths,
+  isLatestSaveBatch,
+  resolveProjectPathsUpdate,
+  type InstallScope,
+} from './components/skills/installScope'
 import type {
   FeaturedSkillDto,
   GitSkillCandidate,
@@ -121,6 +136,10 @@ function App() {
   const [autoSelectSkillName, setAutoSelectSkillName] = useState<string | null>(null)
   const [scopeModalSkill, setScopeModalSkill] = useState<ManagedSkill | null>(null)
   const [recentProjects, setRecentProjects] = useState<string[]>([])
+  const [installScope, setInstallScope] = useState<InstallScope>('global')
+  const [installProjects, setInstallProjects] = useState<string[]>([])
+  const installProjectsRef = useRef<string[]>([])
+  const installProjectsSaveSequenceRef = useRef(0)
   const [skillScopeState, setSkillScopeState] = useState<SkillScopeState>({})
 
   const isTauri =
@@ -567,6 +586,13 @@ function App() {
     [installedToolIds, toolSupportsProjectScope],
   )
 
+  const resetInstallScope = useCallback(() => {
+    setInstallScope('global')
+    installProjectsRef.current = []
+    installProjectsSaveSequenceRef.current += 1
+    setInstallProjects([])
+  }, [])
+
   const getSkillProjects = useCallback(
     (skill: ManagedSkill) => {
       const projects = new Set<string>()
@@ -819,9 +845,10 @@ function App() {
 
 
   const handleOpenAdd = useCallback(() => {
+    resetInstallScope()
     setShowAddModal(true)
     setAddModalTagIds([])
-  }, [])
+  }, [resetInstallScope])
 
   const applySelectedAddModalTags = useCallback(
     async (skillId: string, skillName: string) => {
@@ -849,8 +876,9 @@ function App() {
     if (!loading) {
       setShowAddModal(false)
       setAddModalTagIds([])
+      resetInstallScope()
     }
-  }, [loading])
+  }, [loading, resetInstallScope])
 
   const handleCloseImport = useCallback(() => {
     if (!loading) setShowImportModal(false)
@@ -1068,6 +1096,64 @@ function App() {
       })
     },
     [sharedToolIdsByToolId, t, toolLabelById],
+  )
+
+  const handleInstallScopeChange = useCallback(
+    (nextScope: InstallScope) => {
+      setInstallScope(nextScope)
+      if (nextScope === 'project') {
+        setSyncTargets((current) =>
+          filterTargetsForScope(current, installedTools, nextScope),
+        )
+      }
+    },
+    [installedTools],
+  )
+
+  const handleInstallProjectsChange = useCallback(
+    async (nextProjects: SetStateAction<string[]>) => {
+      const normalizedProjects = resolveProjectPathsUpdate(
+        installProjectsRef.current,
+        nextProjects,
+      )
+      const addedProjects = getAddedProjectPaths(
+        installProjectsRef.current,
+        normalizedProjects,
+      )
+      installProjectsRef.current = normalizedProjects
+      setInstallProjects(normalizedProjects)
+      if (addedProjects.length === 0) return
+
+      const saveSequence = installProjectsSaveSequenceRef.current + 1
+      installProjectsSaveSequenceRef.current = saveSequence
+      try {
+        let savedProjects: string[] | null = null
+        for (const projectPath of addedProjects) {
+          savedProjects = await invokeTauri<string[]>('save_recent_project', {
+            projectPath,
+          })
+        }
+        if (
+          savedProjects &&
+          isLatestSaveBatch(
+            saveSequence,
+            installProjectsSaveSequenceRef.current,
+          )
+        ) {
+          setRecentProjects(savedProjects)
+        }
+      } catch (err) {
+        if (
+          isLatestSaveBatch(
+            saveSequence,
+            installProjectsSaveSequenceRef.current,
+          )
+        ) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      }
+    },
+    [invokeTauri],
   )
 
   const handleDeletePrompt = useCallback((skillId: string) => {
@@ -1351,6 +1437,7 @@ function App() {
         setActionMessage(t('status.localSkillCreated'))
         setSuccessToastMessage(t('status.localSkillCreated'))
         setActionMessage(null)
+        resetInstallScope()
         setShowAddModal(false)
         await loadManagedSkills()
         await loadTags()
@@ -1629,6 +1716,7 @@ function App() {
       setActionMessage(t('status.gitSkillCreated'))
       setSuccessToastMessage(t('status.gitSkillCreated'))
       setActionMessage(null)
+      resetInstallScope()
       setShowAddModal(false)
       await loadManagedSkills()
       await loadTags()
@@ -1645,6 +1733,7 @@ function App() {
 
   const handleExploreInstall = useCallback(
     (sourceUrl: string, skillName?: string) => {
+      resetInstallScope()
       setGitUrl(sourceUrl)
       if (skillName) setAutoSelectSkillName(skillName)
       if (toolStatus) {
@@ -1657,7 +1746,7 @@ function App() {
       exploreInstallUrlRef.current = sourceUrl
       setExploreInstallTrigger((n) => n + 1)
     },
-    [toolStatus],
+    [resetInstallScope, toolStatus],
   )
 
   useEffect(() => {
@@ -1792,6 +1881,7 @@ function App() {
       setActionMessage(t('status.selectedSkillsInstalled'))
       setSuccessToastMessage(t('status.selectedSkillsInstalled'))
       setActionMessage(null)
+      resetInstallScope()
       setShowAddModal(false)
       await loadManagedSkills()
       await loadTags()
@@ -1908,6 +1998,7 @@ function App() {
       setGitCandidates([])
       setGitCandidateSelected({})
       setGitCandidatesRepoUrl('')
+      resetInstallScope()
       setShowAddModal(false)
       await loadManagedSkills()
       await loadTags()
@@ -2189,7 +2280,6 @@ function App() {
   )
 
   const handlePickProject = useCallback(async () => {
-    if (!scopeModalSkill) return undefined
     try {
       if (!isTauri) throw new Error(t('errors.notTauri'))
       const { open } = await import('@tauri-apps/plugin-dialog')
@@ -2204,7 +2294,7 @@ function App() {
       setError(err instanceof Error ? err.message : String(err))
       return undefined
     }
-  }, [isTauri, scopeModalSkill, t])
+  }, [isTauri, t])
 
   const runToggleToolForSkill = useCallback(
     async (skill: ManagedSkill, toolId: string) => {
@@ -2545,6 +2635,9 @@ function App() {
         syncTargets={syncTargets}
         installedTools={installedTools}
         toolStatus={toolStatus}
+        installScope={installScope}
+        installProjects={installProjects}
+        recentProjects={recentProjects}
         onRequestClose={handleCloseAdd}
         onTabChange={setAddModalTab}
         onLocalPathChange={setLocalPath}
@@ -2554,6 +2647,9 @@ function App() {
         onGitNameChange={setGitName}
         onToggleTag={handleToggleAddModalTag}
         onSyncTargetChange={handleSyncTargetChange}
+        onInstallScopeChange={handleInstallScopeChange}
+        onInstallProjectsChange={handleInstallProjectsChange}
+        onPickProject={handlePickProject}
         onSubmit={addModalTab === 'local' ? handleCreateLocal : handleCreateGit}
         t={t}
       />

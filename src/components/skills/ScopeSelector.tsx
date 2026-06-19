@@ -1,4 +1,4 @@
-import { memo, useId, useMemo } from 'react'
+import { memo, useId, useMemo, type SetStateAction } from 'react'
 import { Folder, X } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import {
@@ -13,8 +13,9 @@ type ScopeSelectorProps = {
   recentProjects: string[]
   disabled?: boolean
   showRequired?: boolean
+  ariaLabelledBy?: string
   onScopeChange: (scope: InstallScope) => void
-  onProjectsChange: (projects: string[]) => void
+  onProjectsChange: (projects: SetStateAction<string[]>) => void
   onPickProject: () => Promise<string | undefined>
   t: TFunction
 }
@@ -25,6 +26,7 @@ const ScopeSelector = ({
   recentProjects,
   disabled = false,
   showRequired = true,
+  ariaLabelledBy,
   onScopeChange,
   onProjectsChange,
   onPickProject,
@@ -41,11 +43,18 @@ const ScopeSelector = ({
   )
 
   const addProject = (projectPath: string) => {
-    onProjectsChange(normalizeProjectPaths([...normalizedProjects, projectPath]))
+    onProjectsChange((current) =>
+      normalizeProjectPaths([...current, projectPath]),
+    )
   }
 
   return (
-    <div className="scope-selector">
+    <div
+      className="scope-selector"
+      role="radiogroup"
+      aria-labelledby={ariaLabelledBy}
+      aria-label={ariaLabelledBy ? undefined : t('projectSync.title')}
+    >
       <label className={`scope-choice${scope === 'global' ? ' active' : ''}`}>
         <input
           type="radio"
@@ -86,8 +95,10 @@ const ScopeSelector = ({
                     type="button"
                     className="icon-btn"
                     onClick={() =>
-                      onProjectsChange(
-                        normalizedProjects.filter((item) => item !== project),
+                      onProjectsChange((current) =>
+                        normalizeProjectPaths(current).filter(
+                          (item) => item !== project,
+                        ),
                       )
                     }
                     disabled={disabled}

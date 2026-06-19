@@ -1,3 +1,4 @@
+import type { SetStateAction } from 'react'
 import type { ToolOption } from './types'
 
 export type InstallScope = 'global' | 'project'
@@ -21,6 +22,42 @@ export const getAvailableRecentProjects = (
     (project) => !selected.has(project),
   )
 }
+
+export const getAddedProjectPaths = (
+  previousProjects: string[],
+  nextProjects: string[],
+): string[] => {
+  const previous = new Set(normalizeProjectPaths(previousProjects))
+
+  return normalizeProjectPaths(nextProjects).filter(
+    (project) => !previous.has(project),
+  )
+}
+
+export const resolveProjectPathsUpdate = (
+  currentProjects: string[],
+  update: SetStateAction<string[]>,
+): string[] =>
+  normalizeProjectPaths(
+    typeof update === 'function' ? update(currentProjects) : update,
+  )
+
+export const isLatestSaveBatch = (
+  batchSequence: number,
+  latestSequence: number,
+): boolean => batchSequence === latestSequence
+
+export const isToolUnsupportedForScope = (
+  tool: ToolOption,
+  scope: InstallScope,
+): boolean =>
+  scope === 'project' && tool.supports_project_scope === false
+
+export const getUnsupportedToolsForScope = (
+  tools: ToolOption[],
+  scope: InstallScope,
+): ToolOption[] =>
+  tools.filter((tool) => isToolUnsupportedForScope(tool, scope))
 
 export const filterTargetsForScope = (
   targets: Record<string, boolean>,
