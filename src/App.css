@@ -1094,6 +1094,12 @@
   margin-bottom: 2px;
 }
 
+.scope-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .scope-choice {
   display: flex;
   align-items: flex-start;

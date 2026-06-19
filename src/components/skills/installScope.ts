@@ -11,6 +11,17 @@ export const normalizeProjectPaths = (projects: string[]): string[] =>
     new Set(projects.map((project) => project.trim()).filter(Boolean)),
   )
 
+export const getAvailableRecentProjects = (
+  recentProjects: string[],
+  selectedProjects: string[],
+): string[] => {
+  const selected = new Set(normalizeProjectPaths(selectedProjects))
+
+  return normalizeProjectPaths(recentProjects).filter(
+    (project) => !selected.has(project),
+  )
+}
+
 export const filterTargetsForScope = (
   targets: Record<string, boolean>,
   tools: ToolOption[],

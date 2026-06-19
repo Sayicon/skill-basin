@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildInstallSyncJobs,
   filterTargetsForScope,
+  getAvailableRecentProjects,
   normalizeProjectPaths,
 } from './installScope'
 import type { ToolOption } from './types'
@@ -23,6 +24,17 @@ describe('normalizeProjectPaths', () => {
         ' /repo/b ',
       ]),
     ).toEqual(['/repo/a', '/repo/b'])
+  })
+})
+
+describe('getAvailableRecentProjects', () => {
+  it('returns normalized recent projects that are not already selected', () => {
+    expect(
+      getAvailableRecentProjects(
+        ['/repo/a', ' /repo/b ', '/repo/a', '', '/repo/c'],
+        ['/repo/b', ' /repo/d '],
+      ),
+    ).toEqual(['/repo/a', '/repo/c'])
   })
 })
 
