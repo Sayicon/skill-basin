@@ -9,6 +9,7 @@ import {
   isToolUnsupportedForScope,
   normalizeProjectPaths,
   resolveProjectPathsUpdate,
+  selectInstallToolIds,
 } from './installScope'
 import type { ToolOption } from './types'
 
@@ -135,5 +136,47 @@ describe('buildInstallSyncJobs', () => {
 
   it('returns no project jobs when no projects are selected', () => {
     expect(buildInstallSyncJobs(['cursor'], 'project', ['', '   '])).toEqual([])
+  })
+})
+
+describe('selectInstallToolIds', () => {
+  it('filters uninstalled and project-unsupported tools without global directory deduplication', () => {
+    const uniqueGlobalFn = (toolIds: string[]) => [toolIds[0]]
+
+    expect(
+      selectInstallToolIds(
+        tools,
+        { cursor: true, hermes: true, codex: true },
+        ['cursor', 'hermes', 'codex'],
+        'project',
+        uniqueGlobalFn,
+      ),
+    ).toEqual(['cursor', 'codex'])
+  })
+
+  it('deduplicates selected installed tools by global skills directory', () => {
+    const uniqueGlobalFn = (toolIds: string[]) => [toolIds[0], toolIds[2]]
+
+    expect(
+      selectInstallToolIds(
+        tools,
+        { cursor: true, hermes: true, codex: true },
+        ['cursor', 'hermes', 'codex'],
+        'global',
+        uniqueGlobalFn,
+      ),
+    ).toEqual(['cursor', 'codex'])
+  })
+
+  it('excludes selected tools that are not installed', () => {
+    expect(
+      selectInstallToolIds(
+        tools,
+        { cursor: true, hermes: true, codex: true },
+        ['cursor'],
+        'project',
+        (toolIds) => toolIds,
+      ),
+    ).toEqual(['cursor'])
   })
 })

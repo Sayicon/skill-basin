@@ -31,10 +31,13 @@ import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import SettingsPage from './components/skills/SettingsPage'
 import {
+  buildInstallSyncJobs,
   filterTargetsForScope,
   getAddedProjectPaths,
   isLatestSaveBatch,
+  normalizeProjectPaths,
   resolveProjectPathsUpdate,
+  selectInstallToolIds,
   type InstallScope,
 } from './components/skills/installScope'
 import type {
@@ -584,6 +587,86 @@ function App() {
   const installedProjectToolIds = useMemo(
     () => installedToolIds.filter((toolId) => toolSupportsProjectScope(toolId)),
     [installedToolIds, toolSupportsProjectScope],
+  )
+
+  const syncInstalledSkill = useCallback(
+    async (
+      created: InstallResultDto,
+    ): Promise<{ title: string; message: string }[]> => {
+      const toolIds = selectInstallToolIds(
+        tools,
+        syncTargets,
+        installedToolIds,
+        installScope,
+        uniqueToolIdsBySkillsDir,
+      )
+      const jobs = buildInstallSyncJobs(
+        toolIds,
+        installScope,
+        installProjects,
+      )
+
+      if (jobs.length === 0) {
+        return [
+          {
+            title: t('errors.unsyncedTitle', { name: created.name }),
+            message:
+              installScope === 'project' &&
+              normalizeProjectPaths(installProjects).length === 0
+                ? t('projectSync.projectRequired')
+                : t('errors.noSyncTargets'),
+          },
+        ]
+      }
+
+      const collectedErrors: { title: string; message: string }[] = []
+      for (let index = 0; index < jobs.length; index++) {
+        const job = jobs[index]
+        const toolLabel = toolLabelById[job.toolId] ?? job.toolId
+        setActionMessage(
+          t('actions.syncStep', {
+            index: index + 1,
+            total: jobs.length,
+            name: created.name,
+            tool: toolLabel,
+          }),
+        )
+        try {
+          await invokeTauri('sync_skill_to_tool', {
+            sourcePath: created.central_path,
+            skillId: created.skill_id,
+            tool: job.toolId,
+            name: created.name,
+            scope: job.scope,
+            ...(job.scope === 'project'
+              ? { projectPath: job.projectPath }
+              : {}),
+            overwriteIfSameContent: true,
+          })
+        } catch (err) {
+          collectedErrors.push({
+            title: t('errors.syncFailedTitle', {
+              name: created.name,
+              tool: toolLabel,
+            }),
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+
+      return collectedErrors
+    },
+    [
+      installProjects,
+      installScope,
+      installedToolIds,
+      invokeTauri,
+      syncTargets,
+      t,
+      toolLabelById,
+      tools,
+      uniqueToolIdsBySkillsDir,
+    ],
   )
 
   const resetInstallScope = useCallback(() => {
@@ -1389,49 +1472,8 @@ function App() {
           },
         )
         await applySelectedAddModalTags(created.skill_id, created.name)
-        {
-          const selectedInstalledIds = tools
-            .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-            .map((t) => t.id)
-          const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-            .map((id) => tools.find((t) => t.id === id))
-            .filter(Boolean) as ToolOption[]
-          if (targets.length === 0) {
-            setError(t('errors.noSyncTargets'))
-          } else {
-            const collectedErrors: { title: string; message: string }[] = []
-            for (let i = 0; i < targets.length; i++) {
-              const tool = targets[i]
-              setActionMessage(
-                t('actions.syncStep', {
-                  index: i + 1,
-                  total: targets.length,
-                  name: created.name,
-                  tool: tool.label,
-                }),
-              )
-              try {
-                await invokeTauri('sync_skill_to_tool', {
-                  sourcePath: created.central_path,
-                  skillId: created.skill_id,
-                  tool: tool.id,
-                  name: created.name,
-                  overwriteIfSameContent: true,
-                })
-              } catch (err) {
-                const raw = err instanceof Error ? err.message : String(err)
-                collectedErrors.push({
-                  title: t('errors.syncFailedTitle', {
-                    name: created.name,
-                    tool: tool.label,
-                  }),
-                  message: raw,
-                })
-              }
-            }
-            if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-          }
-        }
+        const syncErrors = await syncInstalledSkill(created)
+        if (syncErrors.length > 0) showActionErrors(syncErrors)
         setLocalPath('')
         setLocalName('')
         setActionMessage(t('status.localSkillCreated'))
@@ -1507,49 +1549,8 @@ function App() {
           },
         )
         await applySelectedAddModalTags(created.skill_id, created.name)
-        {
-          const selectedInstalledIds = tools
-            .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-            .map((t) => t.id)
-          const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-            .map((id) => tools.find((t) => t.id === id))
-            .filter(Boolean) as ToolOption[]
-          if (targets.length === 0) {
-            setError(t('errors.noSyncTargets'))
-          } else {
-            const collectedErrors: { title: string; message: string }[] = []
-            for (let i = 0; i < targets.length; i++) {
-              const tool = targets[i]
-              setActionMessage(
-                t('actions.syncStep', {
-                  index: i + 1,
-                  total: targets.length,
-                  name: created.name,
-                  tool: tool.label,
-                }),
-              )
-              try {
-                await invokeTauri('sync_skill_to_tool', {
-                  sourcePath: created.central_path,
-                  skillId: created.skill_id,
-                  tool: tool.id,
-                  name: created.name,
-                  overwriteIfSameContent: true,
-                })
-              } catch (err) {
-                const raw = err instanceof Error ? err.message : String(err)
-              collectedErrors.push({
-                title: t('errors.syncFailedTitle', {
-                  name: created.name,
-                  tool: tool.label,
-                }),
-                message: raw,
-              })
-              }
-            }
-            if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-          }
-        }
+        const syncErrors = await syncInstalledSkill(created)
+        if (syncErrors.length > 0) showActionErrors(syncErrors)
       } else {
         const candidates = await invokeTauri<GitSkillCandidate[]>(
           'list_git_skills_cmd',
@@ -1572,49 +1573,8 @@ function App() {
             },
           )
           await applySelectedAddModalTags(created.skill_id, created.name)
-          {
-            const selectedInstalledIds = tools
-              .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-              .map((t) => t.id)
-            const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-              .map((id) => tools.find((t) => t.id === id))
-              .filter(Boolean) as ToolOption[]
-            if (targets.length === 0) {
-              setError(t('errors.noSyncTargets'))
-            } else {
-              const collectedErrors: { title: string; message: string }[] = []
-              for (let i = 0; i < targets.length; i++) {
-                const tool = targets[i]
-                setActionMessage(
-                  t('actions.syncStep', {
-                    index: i + 1,
-                    total: targets.length,
-                    name: created.name,
-                    tool: tool.label,
-                  }),
-                )
-                try {
-                  await invokeTauri('sync_skill_to_tool', {
-                    sourcePath: created.central_path,
-                    skillId: created.skill_id,
-                    tool: tool.id,
-                    name: created.name,
-                    overwriteIfSameContent: true,
-                  })
-                } catch (err) {
-                  const raw = err instanceof Error ? err.message : String(err)
-                  collectedErrors.push({
-                    title: t('errors.syncFailedTitle', {
-                      name: created.name,
-                      tool: tool.label,
-                    }),
-                    message: raw,
-                  })
-                }
-              }
-              if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-            }
-          }
+          const syncErrors = await syncInstalledSkill(created)
+          if (syncErrors.length > 0) showActionErrors(syncErrors)
         } else if (autoSelectSkillName) {
           // Auto-select the matching skill from online search results.
           // skills.sh name may differ from SKILL.md name (e.g. "json-render-react" vs "react"),
@@ -1642,49 +1602,8 @@ function App() {
               },
             )
             await applySelectedAddModalTags(created.skill_id, created.name)
-            {
-              const selectedInstalledIds = tools
-                .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-                .map((t) => t.id)
-              const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-                .map((id) => tools.find((t) => t.id === id))
-                .filter(Boolean) as ToolOption[]
-              if (targets.length === 0) {
-                setError(t('errors.noSyncTargets'))
-              } else {
-                const collectedErrors: { title: string; message: string }[] = []
-                for (let i = 0; i < targets.length; i++) {
-                  const tool = targets[i]
-                  setActionMessage(
-                    t('actions.syncStep', {
-                      index: i + 1,
-                      total: targets.length,
-                      name: created.name,
-                      tool: tool.label,
-                    }),
-                  )
-                  try {
-                    await invokeTauri('sync_skill_to_tool', {
-                      sourcePath: created.central_path,
-                      skillId: created.skill_id,
-                      tool: tool.id,
-                      name: created.name,
-                      overwriteIfSameContent: true,
-                    })
-                  } catch (err) {
-                    const raw = err instanceof Error ? err.message : String(err)
-                    collectedErrors.push({
-                      title: t('errors.syncFailedTitle', {
-                        name: created.name,
-                        tool: tool.label,
-                      }),
-                      message: raw,
-                    })
-                  }
-                }
-                if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-              }
-            }
+            const syncErrors = await syncInstalledSkill(created)
+            if (syncErrors.length > 0) showActionErrors(syncErrors)
           } else {
             // No match found, fall back to picker
             setGitCandidatesRepoUrl(url)

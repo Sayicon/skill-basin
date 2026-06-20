@@ -78,6 +78,28 @@ export const filterTargetsForScope = (
   )
 }
 
+export const selectInstallToolIds = (
+  tools: ToolOption[],
+  syncTargets: Record<string, boolean>,
+  installedToolIds: string[],
+  scope: InstallScope,
+  uniqueGlobalToolIds: (toolIds: string[]) => string[],
+): string[] => {
+  const installed = new Set(installedToolIds)
+  const selectedToolIds = tools
+    .filter(
+      (tool) =>
+        syncTargets[tool.id] &&
+        installed.has(tool.id) &&
+        !isToolUnsupportedForScope(tool, scope),
+    )
+    .map((tool) => tool.id)
+
+  return scope === 'global'
+    ? uniqueGlobalToolIds(selectedToolIds)
+    : selectedToolIds
+}
+
 export const buildInstallSyncJobs = (
   toolIds: string[],
   scope: InstallScope,
