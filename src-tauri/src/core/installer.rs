@@ -1038,7 +1038,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
         }
     }
 
-    // Also scan root-level directories for skills (matching collect_skill_dirs behavior)
+    // Also scan root-level directories for skills (matching collect_skill_dirs behavior).
     // This handles the case where the user selects a directory that directly contains
     // skill subdirectories (e.g. a "skills" directory with article-writer/SKILL.md).
     if let Ok(rd) = std::fs::read_dir(base_path) {
@@ -1079,7 +1079,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
                     }
                 }
             } else if is_skill_container_dir_name(&dir_name) {
-                // Scan children of skill container directories
+                // Scan children of skill container directories.
                 if let Ok(sub_rd) = std::fs::read_dir(&p) {
                     for sub_entry in sub_rd.flatten() {
                         let sub_p = sub_entry.path();
@@ -1104,10 +1104,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
                                 }
                                 Err(reason) => {
                                     out.push(LocalSkillCandidate {
-                                        name: sub_entry
-                                            .file_name()
-                                            .to_string_lossy()
-                                            .to_string(),
+                                        name: sub_entry.file_name().to_string_lossy().to_string(),
                                         description: None,
                                         subpath: sub_rel,
                                         valid: false,
@@ -1116,10 +1113,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
                                 }
                             }
                         } else if is_claude_skill_dir(&sub_p) {
-                            let name = sub_entry
-                                .file_name()
-                                .to_string_lossy()
-                                .to_string();
+                            let name = sub_entry.file_name().to_string_lossy().to_string();
                             let desc = read_plugin_description(base_path);
                             out.push(LocalSkillCandidate {
                                 name,
@@ -1130,10 +1124,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
                             });
                         } else {
                             out.push(LocalSkillCandidate {
-                                name: sub_entry
-                                    .file_name()
-                                    .to_string_lossy()
-                                    .to_string(),
+                                name: sub_entry.file_name().to_string_lossy().to_string(),
                                 description: None,
                                 subpath: sub_rel,
                                 valid: false,
