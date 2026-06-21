@@ -1038,6 +1038,114 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
         }
     }
 
+    // Also scan root-level directories for skills (matching collect_skill_dirs behavior)
+    // This handles the case where the user selects a directory that directly contains
+    // skill subdirectories (e.g. a "skills" directory with article-writer/SKILL.md).
+    if let Ok(rd) = std::fs::read_dir(base_path) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let dir_name = entry.file_name();
+            let dir_name = dir_name.to_string_lossy();
+            if is_hidden_dir_name(&dir_name) || is_known_root_scan_dir(&dir_name) {
+                continue;
+            }
+            let rel = p
+                .strip_prefix(base_path)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .to_string();
+            if p.join("SKILL.md").exists() {
+                match parse_skill_md_with_reason(&p.join("SKILL.md")) {
+                    Ok((name, desc)) => {
+                        out.push(LocalSkillCandidate {
+                            name,
+                            description: desc,
+                            subpath: rel,
+                            valid: true,
+                            reason: None,
+                        });
+                    }
+                    Err(reason) => {
+                        out.push(LocalSkillCandidate {
+                            name: dir_name.to_string(),
+                            description: None,
+                            subpath: rel,
+                            valid: false,
+                            reason: Some(reason.to_string()),
+                        });
+                    }
+                }
+            } else if is_skill_container_dir_name(&dir_name) {
+                // Scan children of skill container directories
+                if let Ok(sub_rd) = std::fs::read_dir(&p) {
+                    for sub_entry in sub_rd.flatten() {
+                        let sub_p = sub_entry.path();
+                        if !sub_p.is_dir() {
+                            continue;
+                        }
+                        let sub_rel = sub_p
+                            .strip_prefix(base_path)
+                            .unwrap_or(&sub_p)
+                            .to_string_lossy()
+                            .to_string();
+                        if sub_p.join("SKILL.md").exists() {
+                            match parse_skill_md_with_reason(&sub_p.join("SKILL.md")) {
+                                Ok((name, desc)) => {
+                                    out.push(LocalSkillCandidate {
+                                        name,
+                                        description: desc,
+                                        subpath: sub_rel,
+                                        valid: true,
+                                        reason: None,
+                                    });
+                                }
+                                Err(reason) => {
+                                    out.push(LocalSkillCandidate {
+                                        name: sub_entry
+                                            .file_name()
+                                            .to_string_lossy()
+                                            .to_string(),
+                                        description: None,
+                                        subpath: sub_rel,
+                                        valid: false,
+                                        reason: Some(reason.to_string()),
+                                    });
+                                }
+                            }
+                        } else if is_claude_skill_dir(&sub_p) {
+                            let name = sub_entry
+                                .file_name()
+                                .to_string_lossy()
+                                .to_string();
+                            let desc = read_plugin_description(base_path);
+                            out.push(LocalSkillCandidate {
+                                name,
+                                description: desc,
+                                subpath: sub_rel,
+                                valid: true,
+                                reason: None,
+                            });
+                        } else {
+                            out.push(LocalSkillCandidate {
+                                name: sub_entry
+                                    .file_name()
+                                    .to_string_lossy()
+                                    .to_string(),
+                                description: None,
+                                subpath: sub_rel,
+                                valid: false,
+                                reason: Some("missing_skill_md".to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out.dedup_by(|a, b| a.subpath == b.subpath);
 

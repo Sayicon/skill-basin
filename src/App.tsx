@@ -1030,6 +1030,7 @@ function App() {
     setGitCandidates([])
     setGitCandidateSelected({})
     setGitCandidatesRepoUrl('')
+    setShowAddModal(true)
   }, [loading])
 
   const handleCloseLocalPick = useCallback(() => {
@@ -1042,6 +1043,7 @@ function App() {
     setLocalCandidates([])
     setLocalCandidateSelected({})
     setLocalCandidatesBasePath('')
+    setShowAddModal(true)
   }, [loading])
 
   const handleSortChange = useCallback((value: 'updated' | 'name') => {
@@ -1555,6 +1557,7 @@ function App() {
         setLocalCandidateSelected(
           Object.fromEntries(candidates.map((c) => [c.subpath, c.valid])),
         )
+        setShowAddModal(false)
         setShowLocalPickModal(true)
         setActionMessage(null)
         setLoading(false)
@@ -1596,6 +1599,7 @@ function App() {
           setGitCandidateSelected(
             Object.fromEntries(candidates.map((c) => [c.subpath, true])),
           )
+          setShowAddModal(false)
           setShowGitPickModal(true)
           setActionMessage(null)
           setLoading(false)
@@ -1677,6 +1681,7 @@ function App() {
             setGitCandidateSelected(
               Object.fromEntries(candidates.map((c) => [c.subpath, true])),
             )
+            setShowAddModal(false)
             setShowGitPickModal(true)
             setActionMessage(null)
             setLoading(false)
@@ -1689,6 +1694,7 @@ function App() {
           setGitCandidateSelected(
             Object.fromEntries(candidates.map((c) => [c.subpath, true])),
           )
+          setShowAddModal(false)
           setShowGitPickModal(true)
           setActionMessage(null)
           setLoading(false)
