@@ -101,6 +101,7 @@ pub fn trigger_auto_update_task_now() -> Result<()> {
     }
 }
 
+#[cfg_attr(not(any(test, target_os = "macos")), allow(dead_code))]
 pub fn build_launch_agent_plist(config: &SchedulerConfig) -> String {
     let exe = xml_escape(&config.executable.to_string_lossy());
     let interval_secs = config.interval_hours.saturating_mul(60).saturating_mul(60);
@@ -523,6 +524,7 @@ fn run_systemctl_user(args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+#[cfg_attr(not(any(test, target_os = "macos")), allow(dead_code))]
 fn xml_escape(input: &str) -> String {
     input
         .replace('&', "&amp;")
