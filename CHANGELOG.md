@@ -4,8 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-06-27
+
 ### Fixed
 - **Antigravity global sync path**: Updated Antigravity 2.0 global skill sync to `~/.gemini/config/skills` so synced skills are discovered by current Antigravity versions ([#79](https://github.com/qufei1993/skills-hub/issues/79)).
+- **Windows updater metadata**: Added Windows updater signatures and `windows-x86_64` / `windows-aarch64` platform entries to `updater.json`, fixing update checks on Windows ([#78](https://github.com/qufei1993/skills-hub/issues/78), [PR #82](https://github.com/qufei1993/skills-hub/pull/82)).
 
 ## [0.6.2] - 2026-06-19
 

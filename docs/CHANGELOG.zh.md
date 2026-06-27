@@ -4,8 +4,11 @@
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-06-27
+
 ### 修复
 - **Antigravity 全局同步路径**：将 Antigravity 2.0 的全局 Skill 同步目录更新为 `~/.gemini/config/skills`，确保当前版本 Antigravity 可以发现已同步的 Skill（[#79](https://github.com/qufei1993/skills-hub/issues/79)）。
+- **Windows 自动更新元数据**：为 Windows 发布产物补充 updater 签名，并在 `updater.json` 中新增 `windows-x86_64` / `windows-aarch64` 平台条目，修复 Windows 检查更新失败的问题（[#78](https://github.com/qufei1993/skills-hub/issues/78)、[PR #82](https://github.com/qufei1993/skills-hub/pull/82)）。
 
 ## [0.6.2] - 2026-06-19
 
