@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Antigravity global sync path**: Updated Antigravity 2.0 global skill sync to `~/.gemini/config/skills` so synced skills are discovered by current Antigravity versions ([#79](https://github.com/qufei1993/skills-hub/issues/79)).
+
 ## [0.6.2] - 2026-06-19
 
 ### Added

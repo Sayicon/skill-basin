@@ -35,6 +35,17 @@ fn codewhale_adapter_uses_tool_specific_skill_dirs() {
 }
 
 #[test]
+fn antigravity_adapter_uses_current_global_skill_dir() {
+    let antigravity = adapter_by_key("antigravity").unwrap();
+
+    assert_eq!(antigravity.id, ToolId::Antigravity);
+    assert_eq!(antigravity.relative_skills_dir, ".gemini/config/skills");
+    assert_eq!(antigravity.relative_detect_dir, ".gemini/config");
+    assert_eq!(project_relative_skills_dir(&antigravity), ".agents/skills");
+    assert!(supports_project_scope(&antigravity));
+}
+
+#[test]
 fn adapters_sharing_skills_dir_groups_amp_and_kimi() {
     let amp = adapter_by_key("amp").unwrap();
     let group = adapters_sharing_skills_dir(&amp);
