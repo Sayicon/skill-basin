@@ -33,7 +33,7 @@ fn limit_is_clamped() {
         .with_body(json_one_repo())
         .create();
 
-    let out = search_github_repos_inner(&server.url(), "hello", 0, None).unwrap();
+    let out = search_github_repos_inner(&server.url(), "hello", 0, None, "").unwrap();
     assert_eq!(out.len(), 1);
 
     let _m2 = server
@@ -47,7 +47,7 @@ fn limit_is_clamped() {
         .with_body(json_one_repo())
         .create();
 
-    let _ = search_github_repos_inner(&server.url(), "hello", 999, None).unwrap();
+    let _ = search_github_repos_inner(&server.url(), "hello", 999, None, "").unwrap();
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn maps_fields() {
         .with_body(json_one_repo())
         .create();
 
-    let out = search_github_repos_inner(&server.url(), "x", 2, None).unwrap();
+    let out = search_github_repos_inner(&server.url(), "x", 2, None, "").unwrap();
     assert_eq!(out[0].full_name, "o/r");
     assert_eq!(out[0].stars, 123);
 }
@@ -78,7 +78,7 @@ fn http_error_has_context() {
         .with_body("oops")
         .create();
 
-    let err = search_github_repos_inner(&server.url(), "x", 2, None).unwrap_err();
+    let err = search_github_repos_inner(&server.url(), "x", 2, None, "").unwrap_err();
     let msg = format!("{:#}", err);
     assert!(msg.contains("GitHub search returned error"), "{msg}");
 }

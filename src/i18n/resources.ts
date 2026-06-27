@@ -162,9 +162,87 @@ export const resources = {
       githubTokenPlaceholder: 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
       githubTokenHint:
         'Optional. Set a GitHub personal access token to increase API rate limits from 60/hr to 5,000/hr.',
+      networkProxy: 'Network proxy',
+      networkProxyHint:
+        'Use a local proxy for GitHub API and Git updates. If port 7890 is detected on first launch, this is enabled automatically.',
+      networkProxyPort: 'Proxy port',
+      networkProxyPortHint:
+        'Change this only if your local proxy uses another port.',
+      networkProxyAutoDetected:
+        'Detected local proxy port 7890 and enabled the network proxy automatically.',
       appUpdates: 'App updates',
       updateHint: 'Click “Check” to look for updates.',
       checkForUpdates: 'Check',
+      autoUpdateSystemTask: 'System scheduled update',
+      autoUpdateSystemTaskDesc:
+        'Register a current-user scheduled task to update Git and local skills when the app is closed.',
+      autoUpdateIntervalHint:
+        'Runs every {{hours}} hour(s). Default is 24 hours.',
+      autoUpdateLocalPermissionHint:
+        'Local skills read their original source folder during updates. macOS may ask for file access the first time; Git skills usually do not need this permission.',
+      autoUpdateLocalPermissionProtectedHint:
+        'Some local skill sources are in Desktop, Downloads, or Documents. macOS may ask for folder access when updating them; after you allow it, it is usually remembered.',
+      autoUpdateRunNow: 'Update Now',
+      autoUpdateRetryUpdate: 'Retry Update',
+      autoUpdateRunningButton: 'Updating...',
+      autoUpdateNeverRun: 'Never',
+      autoUpdateLastRun:
+        'Last run: {{time}} · {{status}} · checked {{checked}}, updated {{updated}}, failed {{failed}}',
+      autoUpdateLongRunningHint:
+        'Still running for a long time. This is usually caused by a slow GitHub/network operation or a repository timeout; wait for the current timeout to finish, or try again later.',
+      autoUpdateStalledHint:
+        'This update has not reported progress for a while. The background task may have stopped; you can retry now.',
+      autoUpdateTaskStatus: 'Background update: {{status}}',
+      autoUpdateTaskOff: 'Off',
+      autoUpdateTaskReady: 'Ready',
+      autoUpdateTaskNeedsAttention: 'Needs attention',
+      autoUpdateTaskNeedsAttentionHint:
+        'The system task is not ready. Turn auto-update off and on again, or check app logs for details.',
+      autoUpdateEnabled: 'Auto-update enabled.',
+      autoUpdateDisabled: 'Auto-update disabled.',
+      autoUpdateConfigSaved: 'Auto-update settings saved.',
+      autoUpdateTaskTesting: 'Starting background update...',
+      autoUpdateTaskTriggered:
+        'Background update started. The result will appear here when it finishes.',
+      autoUpdateErrorSummary:
+        '{{count}} skill(s) failed to update. Fix the items below, then run update again.',
+      autoUpdateErrorSourceMissing:
+        '{{count}} local source folder(s) no longer exist. Reconnect or remove those skills.',
+      autoUpdateErrorNetwork:
+        '{{count}} Git update(s) failed because GitHub or the network was unreachable.',
+      autoUpdateErrorRateLimited:
+        '{{count}} GitHub request(s) were rate limited. Add a GitHub Token or try later.',
+      autoUpdateErrorOther:
+        '{{count}} update(s) failed for other reasons.',
+      autoUpdateViewProgress: 'View Progress',
+      autoUpdateProgressTitle: 'Auto-update progress',
+      autoUpdateProgressTotal: 'Total',
+      autoUpdateProgressSucceeded: 'Succeeded',
+      autoUpdateProgressFailed: 'Failed',
+      autoUpdateProgressActive: 'Waiting/Running',
+      autoUpdateProgressStartedAt: 'Started',
+      autoUpdateProgressFinishedAt: 'Finished',
+      autoUpdateProgressDuration: 'Duration',
+      autoUpdateProgressRunning: 'Current item',
+      autoUpdateProgressPending: 'Waiting',
+      autoUpdateProgressNoRunning: 'No skill is running right now.',
+      autoUpdateProgressWaitingToStart:
+        'The background task has started and is waiting to process the first skill.',
+      autoUpdateProgressNoFailed: 'No failed skills.',
+      autoUpdateProgressNoSucceeded: 'No successful skills yet.',
+      autoUpdateProgressSucceededSummary:
+        '{{count}} skill(s) updated successfully.',
+      autoUpdateProgressPendingSummary:
+        '{{count}} skill(s) waiting to update.',
+      autoUpdateProgressNoPending: 'No waiting skills.',
+      copyDetails: 'Copy Details',
+      autoUpdateStatus: {
+        none: 'No run yet',
+        running: 'Running',
+        stopped: 'Stopped',
+        ok: 'Succeeded',
+        error: 'Completed with errors',
+      },
       downloadAndInstall: 'Download & Install',
       checkingUpdates: 'Checking...',
       updateNotAvailable: "You're up to date.",
@@ -543,9 +621,82 @@ export const resources = {
       githubTokenPlaceholder: 'ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
       githubTokenHint:
         '可选。设置 GitHub 个人访问令牌，可将 API 速率限制从 60 次/小时提升到 5,000 次/小时。',
+      networkProxy: '网络代理',
+      networkProxyHint:
+        '为 GitHub API 和 Git 更新使用本地代理。首次启动检测到 7890 端口时会自动开启。',
+      networkProxyPort: '代理端口',
+      networkProxyPortHint:
+        '只有本地代理使用其他端口时才需要修改。',
+      networkProxyAutoDetected:
+        '已检测到本地代理端口 7890，并自动开启网络代理。',
       appUpdates: '应用更新',
       updateHint: '点击“检查更新”获取最新版本。',
       checkForUpdates: '检查更新',
+      autoUpdateSystemTask: '系统定时更新',
+      autoUpdateSystemTaskDesc:
+        '注册当前用户级系统定时任务，在应用关闭时也更新 Git 和本地 Skills。',
+      autoUpdateIntervalHint: '每 {{hours}} 小时运行一次，默认 24 小时。',
+      autoUpdateLocalPermissionHint:
+        '本地 Skill 更新时会读取原始来源目录，macOS 可能在首次访问时请求文件权限；Git Skill 通常不需要这个授权。',
+      autoUpdateLocalPermissionProtectedHint:
+        '部分本地 Skill 来源位于桌面、下载或文稿目录。更新这些 Skill 时 macOS 可能请求文件夹访问权限；允许后通常会记住。',
+      autoUpdateRunNow: '立即更新',
+      autoUpdateRetryUpdate: '重新更新',
+      autoUpdateRunningButton: '更新中...',
+      autoUpdateNeverRun: '从未运行',
+      autoUpdateLastRun:
+        '上次运行：{{time}} · {{status}} · 检查 {{checked}}，更新 {{updated}}，失败 {{failed}}',
+      autoUpdateLongRunningHint:
+        '已运行较长时间。通常是 GitHub/网络较慢或某个仓库正在等待超时；可等待本次超时结束，或稍后重试。',
+      autoUpdateStalledHint:
+        '本次更新长时间没有进展，后台任务可能没有继续执行。可以现在重新更新。',
+      autoUpdateTaskStatus: '后台更新：{{status}}',
+      autoUpdateTaskOff: '未开启',
+      autoUpdateTaskReady: '已就绪',
+      autoUpdateTaskNeedsAttention: '需要处理',
+      autoUpdateTaskNeedsAttentionHint:
+        '系统定时任务未就绪。请关闭后重新开启自动更新，或查看应用日志了解原因。',
+      autoUpdateEnabled: '已开启自动更新。',
+      autoUpdateDisabled: '已关闭自动更新。',
+      autoUpdateConfigSaved: '自动更新设置已保存。',
+      autoUpdateTaskTesting: '正在启动后台更新...',
+      autoUpdateTaskTriggered: '后台更新已启动，完成后会在这里显示结果。',
+      autoUpdateErrorSummary:
+        '{{count}} 个 Skill 更新失败。处理下面的问题后，可再次立即更新。',
+      autoUpdateErrorSourceMissing:
+        '{{count}} 个本地源目录不存在。请重新关联或移除这些 Skills。',
+      autoUpdateErrorNetwork:
+        '{{count}} 个 Git 更新失败，原因是 GitHub 或网络不可访问。',
+      autoUpdateErrorRateLimited:
+        '{{count}} 个 GitHub 请求触发限流。可配置 GitHub Token 或稍后重试。',
+      autoUpdateErrorOther: '{{count}} 个更新因其他原因失败。',
+      autoUpdateViewProgress: '查看进度',
+      autoUpdateProgressTitle: '自动更新进度',
+      autoUpdateProgressTotal: '总数',
+      autoUpdateProgressSucceeded: '成功',
+      autoUpdateProgressFailed: '失败',
+      autoUpdateProgressActive: '等待/处理中',
+      autoUpdateProgressStartedAt: '开始时间',
+      autoUpdateProgressFinishedAt: '完成时间',
+      autoUpdateProgressDuration: '耗时',
+      autoUpdateProgressRunning: '当前处理',
+      autoUpdateProgressPending: '等待中',
+      autoUpdateProgressNoRunning: '当前没有正在更新的 Skill。',
+      autoUpdateProgressWaitingToStart:
+        '后台任务已启动，正在等待开始处理第一个 Skill。',
+      autoUpdateProgressNoFailed: '没有失败的 Skill。',
+      autoUpdateProgressNoSucceeded: '还没有成功更新的 Skill。',
+      autoUpdateProgressSucceededSummary: '{{count}} 个 Skill 更新成功。',
+      autoUpdateProgressPendingSummary: '{{count}} 个 Skill 等待更新。',
+      autoUpdateProgressNoPending: '没有等待中的 Skill。',
+      copyDetails: '复制详情',
+      autoUpdateStatus: {
+        none: '尚未运行',
+        running: '运行中',
+        stopped: '已停止',
+        ok: '成功',
+        error: '完成但有错误',
+      },
       downloadAndInstall: '下载并安装',
       checkingUpdates: '检查中...',
       updateNotAvailable: '已是最新版本。',

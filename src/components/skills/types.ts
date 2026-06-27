@@ -105,6 +105,53 @@ export type UpdateResultDto = {
   updated_targets: string[]
 }
 
+export type AutoUpdateConfigDto = {
+  enabled: boolean
+  interval_hours: number
+  local_skill_count: number
+  protected_local_skill_count: number
+  task_registered: boolean
+  task_status_detail: string
+  last_run_at?: number | null
+  last_started_at?: number | null
+  last_finished_at?: number | null
+  last_status?: string | null
+  last_error?: string | null
+  last_checked: number
+  last_updated: number
+  last_failed: number
+  progress: AutoUpdateProgressSnapshotDto
+}
+
+export type AutoUpdateRunResultDto = {
+  checked: number
+  updated: number
+  failed: number
+  errors: string[]
+  progress: AutoUpdateProgressSnapshotDto
+}
+
+export type GithubProxyConfigDto = {
+  enabled: boolean
+  port: number
+  url: string
+  auto_detected: boolean
+}
+
+export type AutoUpdateSkillProgressDto = {
+  skill_id: string
+  name: string
+  reason?: string | null
+}
+
+export type AutoUpdateProgressSnapshotDto = {
+  total: number
+  succeeded: AutoUpdateSkillProgressDto[]
+  failed: AutoUpdateSkillProgressDto[]
+  running?: AutoUpdateSkillProgressDto | null
+  pending: AutoUpdateSkillProgressDto[]
+}
+
 export type FeaturedSkillDto = {
   slug: string
   name: string

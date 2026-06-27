@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use reqwest::blocking::Client;
 use serde::Deserialize;
 
+use super::network_proxy::{get_github_proxy_url, github_http_client};
 use super::skill_store::SkillStore;
 
 const FEATURED_SKILLS_URL: &str =
@@ -46,7 +46,8 @@ pub fn fetch_featured_skills(store: &SkillStore) -> Result<Vec<FeaturedSkill>> {
 }
 
 fn fetch_featured_skills_inner(url: &str, store: &SkillStore) -> Result<Vec<FeaturedSkill>> {
-    if let Ok(json_str) = fetch_from_url(url) {
+    let proxy_url = get_github_proxy_url(store)?;
+    if let Ok(json_str) = fetch_from_url(url, &proxy_url) {
         if let Ok(skills) = parse_and_filter(&json_str) {
             if !skills.is_empty() {
                 let _ = store.set_setting(CACHE_KEY, &json_str);
@@ -66,11 +67,8 @@ fn fetch_featured_skills_inner(url: &str, store: &SkillStore) -> Result<Vec<Feat
     Ok(parse_and_filter(BUNDLED_JSON).unwrap_or_default())
 }
 
-fn fetch_from_url(url: &str) -> Result<String> {
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .context("build HTTP client")?;
+fn fetch_from_url(url: &str, proxy_url: &str) -> Result<String> {
+    let client = github_http_client(proxy_url, Some(15))?;
 
     let body = client
         .get(url)

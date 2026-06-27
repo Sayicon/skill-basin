@@ -4,6 +4,12 @@ use tauri::State;
 
 use std::sync::Arc;
 
+use crate::core::auto_update::{
+    get_auto_update_config as get_auto_update_config_core, record_auto_update_triggered,
+    run_auto_update_now as run_auto_update_now_core,
+    set_auto_update_config as set_auto_update_config_core, AutoUpdateConfig,
+    AutoUpdateProgressSnapshot, AutoUpdateRunResult,
+};
 use crate::core::cache_cleanup::{
     cleanup_git_cache_dirs, get_git_cache_cleanup_days as get_git_cache_cleanup_days_core,
     get_git_cache_ttl_secs as get_git_cache_ttl_secs_core,
@@ -20,6 +26,12 @@ use crate::core::installer::{
     install_local_skill_from_selection, list_git_skills, list_local_skills,
     update_managed_skill_from_source, GitSkillCandidate, InstallResult, LocalSkillCandidate,
 };
+use crate::core::network_proxy::{
+    get_github_proxy_config as get_github_proxy_config_core,
+    get_github_proxy_url as get_github_proxy_url_core,
+    set_github_proxy_config as set_github_proxy_config_core,
+    set_github_proxy_url as set_github_proxy_url_core, GithubProxyConfig,
+};
 use crate::core::onboarding::{build_onboarding_plan, OnboardingPlan};
 use crate::core::skill_store::{SkillStore, SkillTargetRecord};
 use crate::core::skills_search::{
@@ -27,6 +39,10 @@ use crate::core::skills_search::{
 };
 use crate::core::sync_engine::{
     copy_dir_recursive, sync_dir_for_tool_with_overwrite, sync_dir_hybrid, SyncMode,
+};
+use crate::core::system_scheduler::{
+    current_scheduler_config, get_auto_update_task_status, install_auto_update_task,
+    trigger_auto_update_task_now, uninstall_auto_update_task,
 };
 use crate::core::tool_adapters::{
     adapter_by_key, adapters_sharing_project_skills_dir, is_tool_installed,
@@ -245,6 +261,129 @@ pub async fn set_git_cache_ttl_secs(
         .await
         .map_err(|err| err.to_string())?
         .map_err(format_anyhow_error)
+}
+
+#[derive(Debug, Serialize)]
+pub struct AutoUpdateConfigDto {
+    pub enabled: bool,
+    pub interval_hours: i64,
+    pub local_skill_count: usize,
+    pub protected_local_skill_count: usize,
+    pub task_registered: bool,
+    pub task_status_detail: String,
+    pub last_run_at: Option<i64>,
+    pub last_started_at: Option<i64>,
+    pub last_finished_at: Option<i64>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+    pub last_checked: usize,
+    pub last_updated: usize,
+    pub last_failed: usize,
+    pub progress: AutoUpdateProgressSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AutoUpdateRunResultDto {
+    pub checked: usize,
+    pub updated: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+    pub progress: AutoUpdateProgressSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GithubProxyConfigDto {
+    pub enabled: bool,
+    pub port: u16,
+    pub url: String,
+    pub auto_detected: bool,
+}
+
+#[tauri::command]
+pub async fn get_auto_update_config(
+    store: State<'_, SkillStore>,
+) -> Result<AutoUpdateConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        get_auto_update_config_core(&store).map(to_auto_update_config_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_auto_update_config(
+    store: State<'_, SkillStore>,
+    enabled: bool,
+    intervalHours: i64,
+) -> Result<AutoUpdateConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if !(1..=24 * 30).contains(&intervalHours) {
+            anyhow::bail!("interval hours must be between 1 and 720");
+        }
+        if enabled {
+            let scheduler_config = current_scheduler_config(intervalHours)?;
+            install_auto_update_task(&scheduler_config)?;
+        } else {
+            uninstall_auto_update_task()?;
+        }
+
+        let existing = get_auto_update_config_core(&store)?;
+        let saved = set_auto_update_config_core(
+            &store,
+            AutoUpdateConfig {
+                enabled,
+                interval_hours: intervalHours,
+                local_skill_count: existing.local_skill_count,
+                protected_local_skill_count: existing.protected_local_skill_count,
+                last_run_at: existing.last_run_at,
+                last_started_at: existing.last_started_at,
+                last_finished_at: existing.last_finished_at,
+                last_status: existing.last_status,
+                last_error: existing.last_error,
+                last_checked: existing.last_checked,
+                last_updated: existing.last_updated,
+                last_failed: existing.last_failed,
+                progress: existing.progress,
+            },
+        )?;
+        Ok::<_, anyhow::Error>(to_auto_update_config_dto(saved))
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn run_auto_update_now(
+    app: tauri::AppHandle,
+    store: State<'_, SkillStore>,
+) -> Result<AutoUpdateRunResultDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_auto_update_now_core(&app, &store).map(to_auto_update_run_result_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn trigger_auto_update_task_now_cmd(store: State<'_, SkillStore>) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = get_auto_update_config_core(&store)?;
+        let scheduler_config = current_scheduler_config(config.interval_hours)?;
+        install_auto_update_task(&scheduler_config)?;
+        record_auto_update_triggered(&store)?;
+        trigger_auto_update_task_now()
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
 }
 
 #[derive(Debug, Serialize)]
@@ -797,12 +936,13 @@ pub async fn search_github(
     let limit = limit.unwrap_or(10) as usize;
     tauri::async_runtime::spawn_blocking(move || {
         let token = store.get_setting("github_token")?.unwrap_or_default();
+        let proxy_url = get_github_proxy_url_core(&store)?;
         let token_opt = if token.is_empty() {
             None
         } else {
             Some(token.as_str())
         };
-        search_github_repos(&query, limit, token_opt)
+        search_github_repos(&query, limit, token_opt, &proxy_url)
     })
     .await
     .map_err(|err| err.to_string())?
@@ -835,6 +975,57 @@ pub async fn set_github_token(store: State<'_, SkillStore>, token: String) -> Re
     .await
     .map_err(|err| err.to_string())?
     .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn get_github_proxy_config(
+    store: State<'_, SkillStore>,
+) -> Result<GithubProxyConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        get_github_proxy_config_core(&store).map(to_github_proxy_config_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_github_proxy_config(
+    store: State<'_, SkillStore>,
+    enabled: bool,
+    port: u16,
+) -> Result<GithubProxyConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        set_github_proxy_config_core(&store, enabled, port).map(to_github_proxy_config_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn get_github_proxy_url(store: State<'_, SkillStore>) -> Result<String, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_github_proxy_url_core(&store))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_github_proxy_url(
+    store: State<'_, SkillStore>,
+    proxyUrl: String,
+) -> Result<String, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || set_github_proxy_url_core(&store, &proxyUrl))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
 }
 
 #[tauri::command]
@@ -1069,6 +1260,51 @@ fn to_install_dto(result: InstallResult) -> InstallResultDto {
         name: result.name,
         central_path: result.central_path.to_string_lossy().to_string(),
         content_hash: result.content_hash,
+    }
+}
+
+fn to_auto_update_config_dto(mut config: AutoUpdateConfig) -> AutoUpdateConfigDto {
+    let task_status = get_auto_update_task_status();
+    if config.last_status.as_deref() == Some("running")
+        && task_status.detail.contains("state = not running")
+    {
+        config.last_status = Some("stopped".to_string());
+    }
+    AutoUpdateConfigDto {
+        enabled: config.enabled,
+        interval_hours: config.interval_hours,
+        local_skill_count: config.local_skill_count,
+        protected_local_skill_count: config.protected_local_skill_count,
+        task_registered: task_status.registered,
+        task_status_detail: task_status.detail,
+        last_run_at: config.last_run_at,
+        last_started_at: config.last_started_at,
+        last_finished_at: config.last_finished_at,
+        last_status: config.last_status,
+        last_error: config.last_error,
+        last_checked: config.last_checked,
+        last_updated: config.last_updated,
+        last_failed: config.last_failed,
+        progress: config.progress,
+    }
+}
+
+fn to_auto_update_run_result_dto(result: AutoUpdateRunResult) -> AutoUpdateRunResultDto {
+    AutoUpdateRunResultDto {
+        checked: result.checked,
+        updated: result.updated,
+        failed: result.failed,
+        errors: result.errors,
+        progress: result.progress,
+    }
+}
+
+fn to_github_proxy_config_dto(config: GithubProxyConfig) -> GithubProxyConfigDto {
+    GithubProxyConfigDto {
+        enabled: config.enabled,
+        port: config.port,
+        url: config.url,
+        auto_detected: config.auto_detected,
     }
 }
 
