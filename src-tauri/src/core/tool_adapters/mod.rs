@@ -154,9 +154,9 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
         ToolAdapter {
             id: ToolId::Antigravity,
             display_name: "Antigravity",
-            // add-skill global path: ~/.gemini/antigravity/skills/
-            relative_skills_dir: ".gemini/antigravity/skills",
-            relative_detect_dir: ".gemini/antigravity",
+            // Antigravity 2.0 global path: ~/.gemini/config/skills/
+            relative_skills_dir: ".gemini/config/skills",
+            relative_detect_dir: ".gemini/config",
         },
         ToolAdapter {
             id: ToolId::Amp,

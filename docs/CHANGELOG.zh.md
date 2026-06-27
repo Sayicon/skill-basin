@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### 修复
+- **Antigravity 全局同步路径**：将 Antigravity 2.0 的全局 Skill 同步目录更新为 `~/.gemini/config/skills`，确保当前版本 Antigravity 可以发现已同步的 Skill（[#79](https://github.com/qufei1993/skills-hub/issues/79)）。
+
 ## [0.6.2] - 2026-06-19
 
 ### 新增
