@@ -11,7 +11,10 @@ use super::cancel_token::CancelToken;
 use super::central_repo::{ensure_central_repo, resolve_central_repo_path};
 use super::content_hash::hash_dir;
 use super::git_fetcher::{clone_or_pull, clone_or_pull_sparse};
-use super::github_download::{download_github_directory, parse_github_api_params};
+use super::github_download::{
+    download_github_directory, parse_github_api_params, GithubDownloadOptions,
+};
+use super::network_proxy::get_github_proxy_url;
 use super::skill_store::{SkillRecord, SkillStore};
 use super::sync_engine::copy_dir_recursive;
 use super::sync_engine::sync_dir_copy_with_overwrite;
@@ -126,6 +129,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
     } else {
         Some(github_token.as_str())
     };
+    let github_proxy_url = get_github_proxy_url(store)?;
     let revision;
     if let Some((owner, repo, branch, subpath)) = parse_github_api_params(
         &parsed.clone_url,
@@ -173,8 +177,11 @@ pub fn install_git_skill<R: tauri::Runtime>(
                     &branch,
                     &subpath,
                     &central_path,
-                    cancel,
-                    github_token_opt,
+                    GithubDownloadOptions {
+                        cancel,
+                        token: github_token_opt,
+                        proxy_url: &github_proxy_url,
+                    },
                 ) {
                     Ok(()) => {
                         revision = format!("api-download-{}", branch);
@@ -1337,14 +1344,15 @@ fn clone_to_cache<R: tauri::Runtime>(
         repo_dir
     );
 
-    let rev = match clone_or_pull(clone_url, &repo_dir, branch, cancel) {
+    let proxy_url = get_github_proxy_url(store)?;
+    let rev = match clone_or_pull(clone_url, &repo_dir, branch, cancel, Some(&proxy_url)) {
         Ok(rev) => rev,
         Err(err) => {
             // If cache got corrupted, retry once from a clean state.
             if repo_dir.exists() {
                 let _ = std::fs::remove_dir_all(&repo_dir);
             }
-            clone_or_pull(clone_url, &repo_dir, branch, cancel)
+            clone_or_pull(clone_url, &repo_dir, branch, cancel, Some(&proxy_url))
                 .with_context(|| format!("{:#}", err))?
         }
     };
@@ -1421,14 +1429,29 @@ fn clone_to_cache_subpath<R: tauri::Runtime>(
         repo_dir
     );
 
-    let rev = match clone_or_pull_sparse(clone_url, &repo_dir, branch, subpath, cancel) {
+    let proxy_url = get_github_proxy_url(store)?;
+    let rev = match clone_or_pull_sparse(
+        clone_url,
+        &repo_dir,
+        branch,
+        subpath,
+        cancel,
+        Some(&proxy_url),
+    ) {
         Ok(rev) => rev,
         Err(err) => {
             if repo_dir.exists() {
                 let _ = std::fs::remove_dir_all(&repo_dir);
             }
-            clone_or_pull_sparse(clone_url, &repo_dir, branch, subpath, cancel)
-                .with_context(|| format!("{:#}", err))?
+            clone_or_pull_sparse(
+                clone_url,
+                &repo_dir,
+                branch,
+                subpath,
+                cancel,
+                Some(&proxy_url),
+            )
+            .with_context(|| format!("{:#}", err))?
         }
     };
 

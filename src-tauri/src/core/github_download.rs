@@ -8,6 +8,7 @@ use reqwest::blocking::Client;
 use serde::Deserialize;
 
 use super::cancel_token::CancelToken;
+use super::network_proxy::github_http_client;
 
 #[derive(Debug, Deserialize)]
 struct GithubContent {
@@ -18,30 +19,40 @@ struct GithubContent {
     path: String,
 }
 
+pub struct GithubDownloadOptions<'a> {
+    pub cancel: Option<&'a CancelToken>,
+    pub token: Option<&'a str>,
+    pub proxy_url: &'a str,
+}
+
 /// Download a directory from a GitHub repo using the Contents API.
 ///
 /// `owner`/`repo`: repository coordinates
 /// `branch`: branch or ref (e.g. "main")
 /// `path`: directory path within the repo (e.g. "skills/user/foo")
 /// `dest`: local directory to write files into (will be created)
-/// `cancel`: optional cancellation token
 pub fn download_github_directory(
     owner: &str,
     repo: &str,
     branch: &str,
     path: &str,
     dest: &Path,
-    cancel: Option<&CancelToken>,
-    token: Option<&str>,
+    options: GithubDownloadOptions<'_>,
 ) -> Result<()> {
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .context("build HTTP client")?;
+    let client = github_http_client(options.proxy_url, Some(30))?;
 
     std::fs::create_dir_all(dest).with_context(|| format!("create directory {:?}", dest))?;
 
-    download_dir_recursive(&client, owner, repo, branch, path, dest, cancel, token)
+    download_dir_recursive(
+        &client,
+        owner,
+        repo,
+        branch,
+        path,
+        dest,
+        options.cancel,
+        options.token,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]

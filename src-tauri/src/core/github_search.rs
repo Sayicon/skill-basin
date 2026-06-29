@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
-use reqwest::blocking::Client;
 use serde::Deserialize;
+
+use super::network_proxy::github_http_client;
 
 #[derive(Debug, Deserialize)]
 struct SearchResponse {
@@ -31,17 +32,19 @@ pub fn search_github_repos(
     query: &str,
     limit: usize,
     token: Option<&str>,
+    proxy_url: &str,
 ) -> Result<Vec<RepoSummary>> {
-    search_github_repos_inner("https://api.github.com", query, limit, token)
+    search_github_repos_inner("https://api.github.com", query, limit, token, proxy_url)
 }
 
-fn search_github_repos_inner(
+pub(super) fn search_github_repos_inner(
     base_url: &str,
     query: &str,
     limit: usize,
     token: Option<&str>,
+    proxy_url: &str,
 ) -> Result<Vec<RepoSummary>> {
-    let client = Client::new();
+    let client = github_http_client(proxy_url, None)?;
     let base_url = base_url.trim_end_matches('/');
     let url = format!(
         "{}/search/repositories?q={}&per_page={}",

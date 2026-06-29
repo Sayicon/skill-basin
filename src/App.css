@@ -2366,6 +2366,123 @@
   color: var(--danger, #ef4444);
 }
 
+.auto-update-progress-modal {
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.auto-update-progress-modal .modal-body {
+  overflow-y: auto;
+}
+
+.auto-update-progress-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.auto-update-progress-stats > div {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-element);
+}
+
+.auto-update-progress-stats span,
+.auto-update-progress-stats strong {
+  display: block;
+}
+
+.auto-update-progress-stats span {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.auto-update-progress-stats strong {
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 18px;
+}
+
+.auto-update-progress-runtime {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-muted);
+}
+
+.auto-update-progress-runtime span,
+.auto-update-progress-runtime strong {
+  display: block;
+}
+
+.auto-update-progress-runtime span {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.auto-update-progress-runtime strong {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auto-update-progress-section {
+  display: grid;
+  gap: 8px;
+}
+
+.auto-update-progress-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auto-update-progress-list {
+  display: grid;
+  gap: 6px;
+}
+
+.auto-update-progress-item {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-app);
+}
+
+.auto-update-progress-name {
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.auto-update-progress-reason {
+  margin-top: 6px;
+  color: var(--danger, #ef4444);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.auto-update-progress-empty {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
 .btn-sm {
   padding: 4px 10px;
   font-size: 12px;

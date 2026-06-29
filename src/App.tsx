@@ -31,6 +31,10 @@ import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import SettingsPage from './components/skills/SettingsPage'
 import {
+  getAutoUpdateToastKey,
+  shouldKeepWaitingForTriggeredAutoUpdate,
+} from './components/skills/autoUpdateSettings'
+import {
   buildInstallSyncJobs,
   filterTargetsForScope,
   getAddedProjectPaths,
@@ -42,8 +46,10 @@ import {
   type InstallScope,
 } from './components/skills/installScope'
 import type {
+  AutoUpdateConfigDto,
   FeaturedSkillDto,
   GitSkillCandidate,
+  GithubProxyConfigDto,
   InstallResultDto,
   LocalSkillCandidate,
   ManagedSkill,
@@ -443,6 +449,24 @@ function App() {
   }, [isTauri, invokeTauri])
 
   useEffect(() => {
+    if (!isTauri) return
+    invokeTauri<GithubProxyConfigDto>('get_github_proxy_config')
+      .then((config) => setGithubProxyConfig(config))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [isTauri, invokeTauri])
+
+  useEffect(() => {
+    if (!isTauri) return
+    invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+      .then((config) => setAutoUpdateConfig(config))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [isTauri, invokeTauri])
+
+  useEffect(() => {
     if (isTauri) {
       void loadPlan()
     }
@@ -784,6 +808,47 @@ function App() {
   const [gitCacheCleanupDays, setGitCacheCleanupDays] = useState<number>(30)
   const [gitCacheTtlSecs, setGitCacheTtlSecs] = useState<number>(60)
   const [githubToken, setGithubToken] = useState<string>('')
+  const [githubProxyConfig, setGithubProxyConfig] =
+    useState<GithubProxyConfigDto>({
+      enabled: false,
+      port: 7890,
+      url: '',
+      auto_detected: false,
+    })
+  const [autoUpdateConfig, setAutoUpdateConfig] =
+    useState<AutoUpdateConfigDto | null>(null)
+  const [autoUpdateTriggering, setAutoUpdateTriggering] = useState(false)
+
+  useEffect(() => {
+    if (!isTauri) return
+    if (activeView !== 'settings') return
+    if (autoUpdateConfig?.last_status !== 'running') return
+
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      void invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+        .then(async (config) => {
+          if (cancelled) return
+          setAutoUpdateConfig(config)
+          if (config.last_status !== 'running') {
+            await loadManagedSkills()
+          }
+        })
+        .catch(() => {})
+    }, 2000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [
+    activeView,
+    autoUpdateConfig?.last_status,
+    invokeTauri,
+    isTauri,
+    loadManagedSkills,
+  ])
+
   const handlePickStoragePath = useCallback(async () => {
     try {
       if (!isTauri) {
@@ -849,6 +914,137 @@ function App() {
     },
     [invokeTauri, isTauri],
   )
+  const handleGithubProxyConfigChange = useCallback(
+    async (enabled: boolean, port: number) => {
+      const normalizedPort = Math.max(1, Math.min(Math.round(port), 65535))
+      setGithubProxyConfig((prev) => ({
+        ...prev,
+        enabled,
+        port: normalizedPort,
+        url: enabled ? `http://127.0.0.1:${normalizedPort}` : '',
+        auto_detected: false,
+      }))
+      if (!isTauri) return
+      try {
+        const saved = await invokeTauri<GithubProxyConfigDto>(
+          'set_github_proxy_config',
+          {
+            enabled,
+            port: normalizedPort,
+          },
+        )
+        setGithubProxyConfig(saved)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        void invokeTauri<GithubProxyConfigDto>('get_github_proxy_config')
+          .then((config) => setGithubProxyConfig(config))
+          .catch(() => {})
+      }
+    },
+    [invokeTauri, isTauri],
+  )
+  const handleAutoUpdateConfigChange = useCallback(
+    async (enabled: boolean, intervalHours: number) => {
+      const normalized = Math.max(1, Math.min(intervalHours, 24 * 30))
+      const previousEnabled = autoUpdateConfig?.enabled
+      setAutoUpdateConfig((prev) => ({
+        enabled,
+        interval_hours: normalized,
+        local_skill_count: prev?.local_skill_count ?? 0,
+        protected_local_skill_count: prev?.protected_local_skill_count ?? 0,
+        task_registered: prev?.task_registered ?? false,
+        task_status_detail: prev?.task_status_detail ?? '',
+        last_run_at: prev?.last_run_at ?? null,
+        last_started_at: prev?.last_started_at ?? null,
+        last_finished_at: prev?.last_finished_at ?? null,
+        last_status: prev?.last_status ?? null,
+        last_error: prev?.last_error ?? null,
+        last_checked: prev?.last_checked ?? 0,
+        last_updated: prev?.last_updated ?? 0,
+        last_failed: prev?.last_failed ?? 0,
+        progress: prev?.progress ?? {
+          total: 0,
+          succeeded: [],
+          failed: [],
+          running: null,
+          pending: [],
+        },
+      }))
+      if (!isTauri) return
+      try {
+        const updated = await invokeTauri<AutoUpdateConfigDto>(
+          'set_auto_update_config',
+          {
+            enabled,
+            intervalHours: normalized,
+          },
+        )
+        setAutoUpdateConfig(updated)
+        setSuccessToastMessage(t(getAutoUpdateToastKey(previousEnabled, enabled)))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        void invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+          .then((config) => setAutoUpdateConfig(config))
+          .catch(() => {})
+      }
+    },
+    [autoUpdateConfig?.enabled, invokeTauri, isTauri, t],
+  )
+  const handleTriggerAutoUpdateTaskNow = useCallback(async () => {
+    if (!isTauri || autoUpdateTriggering) return
+    const triggeredAt = Date.now()
+    setAutoUpdateTriggering(true)
+    setError(null)
+    setAutoUpdateConfig((prev) => prev ? {
+      ...prev,
+      last_run_at: triggeredAt,
+      last_started_at: triggeredAt,
+      last_finished_at: null,
+      last_status: 'running',
+      last_error: null,
+      last_checked: 0,
+      last_updated: 0,
+      last_failed: 0,
+      progress: {
+        total: 0,
+        succeeded: [],
+        failed: [],
+        running: null,
+        pending: [],
+      },
+    } : prev)
+    try {
+      await invokeTauri('trigger_auto_update_task_now_cmd')
+      setSuccessToastMessage(t('autoUpdateTaskTriggered'))
+      let sawRunning = false
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000))
+        const latestConfig = await invokeTauri<AutoUpdateConfigDto>(
+          'get_auto_update_config',
+        )
+        if (latestConfig.last_status === 'running') {
+          sawRunning = true
+        }
+        const keepWaiting = shouldKeepWaitingForTriggeredAutoUpdate(
+          latestConfig,
+          triggeredAt,
+          sawRunning,
+        )
+        if (keepWaiting && latestConfig.last_status !== 'running') {
+          continue
+        }
+        setAutoUpdateConfig(latestConfig)
+        if (!keepWaiting) {
+          await loadManagedSkills()
+          break
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAutoUpdateTriggering(false)
+    }
+  }, [autoUpdateTriggering, invokeTauri, isTauri, loadManagedSkills, t])
   const handleClearGitCacheNow = useCallback(async () => {
     if (!isTauri) {
       setError(t('errors.notTauri'))
@@ -2499,6 +2695,7 @@ function App() {
             storagePath={storagePath}
             gitCacheCleanupDays={gitCacheCleanupDays}
             gitCacheTtlSecs={gitCacheTtlSecs}
+            autoUpdateConfig={autoUpdateConfig}
             themePreference={themePreference}
             onPickStoragePath={handlePickStoragePath}
             onToggleLanguage={toggleLanguage}
@@ -2508,6 +2705,11 @@ function App() {
             onClearGitCacheNow={handleClearGitCacheNow}
             githubToken={githubToken}
             onGithubTokenChange={handleGithubTokenChange}
+            githubProxyConfig={githubProxyConfig}
+            onGithubProxyConfigChange={handleGithubProxyConfigChange}
+            onAutoUpdateConfigChange={handleAutoUpdateConfigChange}
+            onRunAutoUpdateNow={handleTriggerAutoUpdateTaskNow}
+            autoUpdateTriggering={autoUpdateTriggering}
             onBack={handleCloseSettings}
             t={t}
           />
