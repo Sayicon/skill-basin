@@ -30,6 +30,7 @@ import NewToolsModal from './components/skills/modals/NewToolsModal'
 import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import SettingsPage from './components/skills/SettingsPage'
+import ToolsPage from './components/skills/ToolsPage'
 import {
   getAutoUpdateToastKey,
   shouldKeepWaitingForTriggeredAutoUpdate,
@@ -56,6 +57,7 @@ import type {
   OnboardingPlan,
   OnlineSkillDto,
   TagWithCountDto,
+  ToolConfigDto,
   ToolOption,
   ToolStatusDto,
   UpdateResultDto,
@@ -112,6 +114,7 @@ function App() {
   >({})
   const [loadingStartAt, setLoadingStartAt] = useState<number | null>(null)
   const [toolStatus, setToolStatus] = useState<ToolStatusDto | null>(null)
+  const [toolConfig, setToolConfig] = useState<ToolConfigDto | null>(null)
   const [showNewToolsModal, setShowNewToolsModal] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -128,7 +131,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'updated' | 'name'>('updated')
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'project'>('all')
-  const [activeView, setActiveView] = useState<'myskills' | 'explore' | 'detail' | 'settings' | 'tags'>('myskills')
+  const [activeView, setActiveView] = useState<'myskills' | 'explore' | 'detail' | 'settings' | 'tags' | 'tools'>('myskills')
   const [detailSkill, setDetailSkill] = useState<ManagedSkill | null>(null)
   const [tags, setTags] = useState<TagWithCountDto[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
@@ -467,6 +470,15 @@ function App() {
   }, [isTauri, invokeTauri])
 
   useEffect(() => {
+    if (!isTauri) return
+    invokeTauri<ToolConfigDto>('get_tool_config')
+      .then((config) => setToolConfig(config))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [isTauri, invokeTauri])
+
+  useEffect(() => {
     if (isTauri) {
       void loadPlan()
     }
@@ -542,15 +554,19 @@ function App() {
   }, [error, formatErrorMessage])
 
   const toolInfos = useMemo(() => toolStatus?.tools ?? [], [toolStatus])
+  const enabledToolInfos = useMemo(
+    () => toolInfos.filter((info) => info.enabled),
+    [toolInfos],
+  )
 
   const tools: ToolOption[] = useMemo(() => {
-    return toolInfos.map((info) => ({
+    return enabledToolInfos.map((info) => ({
       id: info.key,
       // Prefer i18n label if present; fallback to backend label.
       label: t(`tools.${info.key}`, { defaultValue: info.label }),
       supports_project_scope: info.supports_project_scope,
     }))
-  }, [t, toolInfos])
+  }, [t, enabledToolInfos])
 
   const toolLabelById = useMemo(() => {
     const out: Record<string, string> = {}
@@ -561,7 +577,7 @@ function App() {
   const sharedToolIdsByToolId = useMemo(() => {
     // toolId -> all toolIds that share the same skills_dir.
     const byDir: Record<string, string[]> = {}
-    for (const info of toolInfos) {
+    for (const info of enabledToolInfos) {
       const dir = info.skills_dir
       if (!byDir[dir]) byDir[dir] = []
       byDir[dir].push(info.key)
@@ -573,11 +589,11 @@ function App() {
       for (const id of ids) out[id] = ids
     }
     return out
-  }, [toolInfos])
+  }, [enabledToolInfos])
 
   const sharedProjectToolIdsByToolId = useMemo(() => {
     const byDir: Record<string, string[]> = {}
-    for (const info of toolInfos) {
+    for (const info of enabledToolInfos) {
       const dir = info.project_skills_dir
       if (!byDir[dir]) byDir[dir] = []
       byDir[dir].push(info.key)
@@ -588,7 +604,7 @@ function App() {
       for (const id of ids) out[id] = ids
     }
     return out
-  }, [toolInfos])
+  }, [enabledToolInfos])
 
   const uniqueToolIdsBySkillsDir = useCallback(
     (toolIds: string[]) => {
@@ -596,7 +612,7 @@ function App() {
       const wanted = new Set(toolIds)
       const seen = new Set<string>()
       const out: string[] = []
-      for (const tool of toolInfos) {
+      for (const tool of enabledToolInfos) {
         if (!wanted.has(tool.key)) continue
         if (seen.has(tool.skills_dir)) continue
         seen.add(tool.skills_dir)
@@ -604,7 +620,7 @@ function App() {
       }
       return out
     },
-    [toolInfos],
+    [enabledToolInfos],
   )
 
   const uniqueToolIdsByProjectSkillsDir = useCallback(
@@ -612,7 +628,7 @@ function App() {
       const wanted = new Set(toolIds)
       const seen = new Set<string>()
       const out: string[] = []
-      for (const tool of toolInfos) {
+      for (const tool of enabledToolInfos) {
         if (!wanted.has(tool.key)) continue
         if (seen.has(tool.project_skills_dir)) continue
         seen.add(tool.project_skills_dir)
@@ -620,7 +636,7 @@ function App() {
       }
       return out
     },
-    [toolInfos],
+    [enabledToolInfos],
   )
 
   const installedToolIds = useMemo(
@@ -818,24 +834,36 @@ function App() {
   const [autoUpdateConfig, setAutoUpdateConfig] =
     useState<AutoUpdateConfigDto | null>(null)
   const [autoUpdateTriggering, setAutoUpdateTriggering] = useState(false)
+  const autoUpdateLastRunRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!isTauri) return
     if (activeView !== 'settings') return
-    if (autoUpdateConfig?.last_status !== 'running') return
 
     let cancelled = false
+    const refreshAutoUpdateConfig = async () => {
+      const config = await invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+      if (cancelled) return
+
+      const previousLastRun = autoUpdateLastRunRef.current
+      const nextLastRun = config.last_run_at ?? null
+      autoUpdateLastRunRef.current = nextLastRun
+      setAutoUpdateConfig(config)
+
+      if (
+        previousLastRun !== null &&
+        nextLastRun !== null &&
+        nextLastRun !== previousLastRun &&
+        config.last_status !== 'running'
+      ) {
+        await loadManagedSkills()
+      }
+    }
+
+    void refreshAutoUpdateConfig().catch(() => {})
     const timer = window.setInterval(() => {
-      void invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
-        .then(async (config) => {
-          if (cancelled) return
-          setAutoUpdateConfig(config)
-          if (config.last_status !== 'running') {
-            await loadManagedSkills()
-          }
-        })
-        .catch(() => {})
-    }, 2000)
+      void refreshAutoUpdateConfig().catch(() => {})
+    }, autoUpdateConfig?.last_status === 'running' ? 2000 : 10000)
 
     return () => {
       cancelled = true
@@ -943,13 +971,61 @@ function App() {
     },
     [invokeTauri, isTauri],
   )
+  const handleToolConfigChange = useCallback(
+    async (nextConfig: ToolConfigDto) => {
+      setToolConfig(nextConfig)
+      if (!isTauri) return
+      try {
+        const saved = await invokeTauri<ToolConfigDto>('set_tool_config', {
+          config: nextConfig,
+        })
+        setToolConfig(saved)
+        const status = await invokeTauri<ToolStatusDto>('get_tool_status')
+        setToolStatus(status)
+        setSyncTargets((prev) => {
+          const installed = new Set(status.installed)
+          const next: Record<string, boolean> = {}
+          for (const info of status.tools) {
+            next[info.key] = Boolean(prev[info.key]) && installed.has(info.key)
+          }
+          return next
+        })
+        toast.success(t('toolManagement.saved'), { duration: 1600 })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [invokeTauri, isTauri, t],
+  )
   const handleAutoUpdateConfigChange = useCallback(
-    async (enabled: boolean, intervalHours: number) => {
-      const normalized = Math.max(1, Math.min(intervalHours, 24 * 30))
+    async (
+      enabled: boolean,
+      schedule: {
+        scheduleType: 'interval' | 'daily'
+        intervalValue: number
+        intervalUnit: 'minutes' | 'hours'
+        dailyTime: string
+      },
+    ) => {
+      const normalizedIntervalValue = schedule.intervalUnit === 'minutes'
+        ? Math.max(15, Math.min(schedule.intervalValue, 24 * 30 * 60))
+        : Math.max(1, Math.min(schedule.intervalValue, 24 * 30))
+      const normalizedDailyTime = /^\d{2}:\d{2}$/.test(schedule.dailyTime)
+        ? schedule.dailyTime
+        : '03:00'
+      const normalizedIntervalHours = schedule.scheduleType === 'daily'
+        ? 24
+        : schedule.intervalUnit === 'minutes'
+          ? Math.max(1, Math.ceil(normalizedIntervalValue / 60))
+          : normalizedIntervalValue
       const previousEnabled = autoUpdateConfig?.enabled
       setAutoUpdateConfig((prev) => ({
         enabled,
-        interval_hours: normalized,
+        interval_hours: normalizedIntervalHours,
+        schedule_type: schedule.scheduleType,
+        interval_value: normalizedIntervalValue,
+        interval_unit: schedule.intervalUnit,
+        daily_time: normalizedDailyTime,
         local_skill_count: prev?.local_skill_count ?? 0,
         protected_local_skill_count: prev?.protected_local_skill_count ?? 0,
         task_registered: prev?.task_registered ?? false,
@@ -976,7 +1052,11 @@ function App() {
           'set_auto_update_config',
           {
             enabled,
-            intervalHours: normalized,
+            intervalHours: normalizedIntervalHours,
+            scheduleType: schedule.scheduleType,
+            intervalValue: normalizedIntervalValue,
+            intervalUnit: schedule.intervalUnit,
+            dailyTime: normalizedDailyTime,
           },
         )
         setAutoUpdateConfig(updated)
@@ -1103,7 +1183,7 @@ function App() {
   }, [featuredSkills.length, invokeTauri])
 
   const handleViewChange = useCallback(
-    (view: 'myskills' | 'explore' | 'tags') => {
+    (view: 'myskills' | 'explore' | 'tags' | 'tools') => {
       setActiveView(view)
       if (view === 'explore') {
         loadFeaturedSkills()
@@ -2686,6 +2766,14 @@ function App() {
             onCreateTag={handleCreateTag}
             onRenameTag={handleRenameTag}
             onDeleteTag={handleDeleteTag}
+            t={t}
+          />
+        ) : activeView === 'tools' ? (
+          <ToolsPage
+            toolStatus={toolStatus}
+            toolConfig={toolConfig}
+            onToolConfigChange={handleToolConfigChange}
+            onBack={handleBackToList}
             t={t}
           />
         ) : activeView === 'settings' ? (

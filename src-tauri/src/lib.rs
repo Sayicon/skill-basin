@@ -116,6 +116,8 @@ pub fn run() {
             commands::set_central_repo_path,
             commands::get_recent_projects,
             commands::save_recent_project,
+            commands::get_tool_config,
+            commands::set_tool_config,
             commands::get_tool_status,
             commands::get_git_cache_cleanup_days,
             commands::get_git_cache_ttl_secs,

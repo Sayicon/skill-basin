@@ -86,6 +86,8 @@ export type ToolInfoDto = {
   key: string
   label: string
   installed: boolean
+  enabled: boolean
+  is_custom: boolean
   skills_dir: string
   project_skills_dir: string
   supports_project_scope: boolean
@@ -95,6 +97,19 @@ export type ToolStatusDto = {
   tools: ToolInfoDto[]
   installed: string[]
   newly_installed: string[]
+}
+
+export type CustomToolConfigDto = {
+  key: string
+  label: string
+  skills_dir: string
+  project_skills_dir?: string | null
+  enabled: boolean
+}
+
+export type ToolConfigDto = {
+  disabled_builtin_tools: string[]
+  custom_tools: CustomToolConfigDto[]
 }
 
 export type UpdateResultDto = {
@@ -108,6 +123,10 @@ export type UpdateResultDto = {
 export type AutoUpdateConfigDto = {
   enabled: boolean
   interval_hours: number
+  schedule_type: 'interval' | 'daily'
+  interval_value: number
+  interval_unit: 'minutes' | 'hours'
+  daily_time: string
   local_skill_count: number
   protected_local_skill_count: number
   task_registered: boolean

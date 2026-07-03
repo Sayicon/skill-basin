@@ -1,5 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, CheckCircle2, Clock3, LoaderCircle, X, XCircle } from 'lucide-react'
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock3,
+  LoaderCircle,
+  X,
+  XCircle,
+} from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { Update } from '@tauri-apps/plugin-updater'
 import type {
@@ -15,6 +22,15 @@ import {
 } from './autoUpdateSettings'
 
 type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'done' | 'error'
+type AutoUpdateScheduleType = 'interval' | 'daily'
+type AutoUpdateIntervalUnit = 'minutes' | 'hours'
+
+type AutoUpdateScheduleInput = {
+  scheduleType: AutoUpdateScheduleType
+  intervalValue: number
+  intervalUnit: AutoUpdateIntervalUnit
+  dailyTime: string
+}
 
 type SettingsPageProps = {
   isTauri: boolean
@@ -34,7 +50,10 @@ type SettingsPageProps = {
   onClearGitCacheNow: () => void
   onGithubTokenChange: (token: string) => void
   onGithubProxyConfigChange: (enabled: boolean, port: number) => void
-  onAutoUpdateConfigChange: (enabled: boolean, intervalHours: number) => void
+  onAutoUpdateConfigChange: (
+    enabled: boolean,
+    schedule: AutoUpdateScheduleInput,
+  ) => void
   onRunAutoUpdateNow: () => void
   autoUpdateTriggering: boolean
   onBack: () => void
@@ -75,10 +94,27 @@ const SettingsPage = ({
   useEffect(() => {
     setLocalGithubProxyPort(String(githubProxyConfig.port))
   }, [githubProxyConfig.port])
-  const [localAutoUpdateInterval, setLocalAutoUpdateInterval] = useState(24)
+  const [localAutoUpdateScheduleType, setLocalAutoUpdateScheduleType] =
+    useState<AutoUpdateScheduleType>('interval')
+  const [localAutoUpdateIntervalValue, setLocalAutoUpdateIntervalValue] =
+    useState(24)
+  const [localAutoUpdateIntervalUnit, setLocalAutoUpdateIntervalUnit] =
+    useState<AutoUpdateIntervalUnit>('hours')
+  const [localAutoUpdateDailyTime, setLocalAutoUpdateDailyTime] = useState('03:00')
   useEffect(() => {
-    setLocalAutoUpdateInterval(autoUpdateConfig?.interval_hours ?? 24)
-  }, [autoUpdateConfig?.interval_hours])
+    setLocalAutoUpdateScheduleType(autoUpdateConfig?.schedule_type ?? 'interval')
+    setLocalAutoUpdateIntervalValue(
+      autoUpdateConfig?.interval_value ?? autoUpdateConfig?.interval_hours ?? 24,
+    )
+    setLocalAutoUpdateIntervalUnit(autoUpdateConfig?.interval_unit ?? 'hours')
+    setLocalAutoUpdateDailyTime(autoUpdateConfig?.daily_time ?? '03:00')
+  }, [
+    autoUpdateConfig?.daily_time,
+    autoUpdateConfig?.interval_hours,
+    autoUpdateConfig?.interval_unit,
+    autoUpdateConfig?.interval_value,
+    autoUpdateConfig?.schedule_type,
+  ])
   const [autoUpdateProgressOpen, setAutoUpdateProgressOpen] = useState(false)
 
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>('idle')
@@ -148,6 +184,22 @@ const SettingsPage = ({
 
   const autoUpdateEnabled = autoUpdateConfig?.enabled ?? false
   const autoUpdateInterval = autoUpdateConfig?.interval_hours ?? 24
+  const autoUpdateScheduleType = autoUpdateConfig?.schedule_type ?? 'interval'
+  const autoUpdateIntervalValue =
+    autoUpdateConfig?.interval_value ?? autoUpdateInterval
+  const autoUpdateIntervalUnit = autoUpdateConfig?.interval_unit ?? 'hours'
+  const autoUpdateDailyTime = autoUpdateConfig?.daily_time ?? '03:00'
+  const localAutoUpdateSchedule = {
+    scheduleType: localAutoUpdateScheduleType,
+    intervalValue: localAutoUpdateIntervalValue,
+    intervalUnit: localAutoUpdateIntervalUnit,
+    dailyTime: localAutoUpdateDailyTime,
+  }
+  const autoUpdateScheduleChanged =
+    localAutoUpdateScheduleType !== autoUpdateScheduleType ||
+    localAutoUpdateIntervalValue !== autoUpdateIntervalValue ||
+    localAutoUpdateIntervalUnit !== autoUpdateIntervalUnit ||
+    localAutoUpdateDailyTime !== autoUpdateDailyTime
   const autoUpdateHasLocalSkills = (autoUpdateConfig?.local_skill_count ?? 0) > 0
   const autoUpdateHasProtectedLocalSkills =
     (autoUpdateConfig?.protected_local_skill_count ?? 0) > 0
@@ -504,37 +556,100 @@ const SettingsPage = ({
               onClick={() => {
                 onAutoUpdateConfigChange(
                   !autoUpdateEnabled,
-                  localAutoUpdateInterval,
+                  localAutoUpdateSchedule,
                 )
               }}
             >
               <span className="settings-toggle-knob" />
             </button>
           </div>
+          <div className="settings-segmented" role="group" aria-label={t('autoUpdateScheduleMode')}>
+            <button
+              type="button"
+              className={localAutoUpdateScheduleType === 'interval' ? 'active' : ''}
+              onClick={() => {
+                setLocalAutoUpdateScheduleType('interval')
+                onAutoUpdateConfigChange(autoUpdateEnabled, {
+                  ...localAutoUpdateSchedule,
+                  scheduleType: 'interval',
+                })
+              }}
+            >
+              {t('autoUpdateScheduleInterval')}
+            </button>
+            <button
+              type="button"
+              className={localAutoUpdateScheduleType === 'daily' ? 'active' : ''}
+              onClick={() => {
+                setLocalAutoUpdateScheduleType('daily')
+                onAutoUpdateConfigChange(autoUpdateEnabled, {
+                  ...localAutoUpdateSchedule,
+                  scheduleType: 'daily',
+                })
+              }}
+            >
+              {t('autoUpdateScheduleDaily')}
+            </button>
+          </div>
           <div className="settings-input-row">
-            <input
-              id="settings-auto-update-hours"
-              className="settings-input"
-              type="number"
-              min={1}
-              max={720}
-              step={1}
-              value={localAutoUpdateInterval}
-              onChange={(event) => {
-                const next = Number(event.target.value)
-                if (!Number.isNaN(next)) {
-                  setLocalAutoUpdateInterval(next)
-                }
-              }}
-              onBlur={() => {
-                if (localAutoUpdateInterval !== autoUpdateInterval) {
-                  onAutoUpdateConfigChange(
-                    autoUpdateEnabled,
-                    localAutoUpdateInterval,
-                  )
-                }
-              }}
-            />
+            {localAutoUpdateScheduleType === 'interval' ? (
+              <>
+                <input
+                  id="settings-auto-update-interval"
+                  className="settings-input"
+                  type="number"
+                  min={localAutoUpdateIntervalUnit === 'minutes' ? 15 : 1}
+                  max={localAutoUpdateIntervalUnit === 'minutes' ? 43200 : 720}
+                  step={1}
+                  value={localAutoUpdateIntervalValue}
+                  onChange={(event) => {
+                    const next = Number(event.target.value)
+                    if (!Number.isNaN(next)) {
+                      setLocalAutoUpdateIntervalValue(next)
+                    }
+                  }}
+                  onBlur={() => {
+                    if (autoUpdateScheduleChanged) {
+                      onAutoUpdateConfigChange(
+                        autoUpdateEnabled,
+                        localAutoUpdateSchedule,
+                      )
+                    }
+                  }}
+                />
+                <select
+                  className="settings-select settings-unit-select"
+                  value={localAutoUpdateIntervalUnit}
+                  onChange={(event) => {
+                    const nextUnit = event.target.value as AutoUpdateIntervalUnit
+                    setLocalAutoUpdateIntervalUnit(nextUnit)
+                    onAutoUpdateConfigChange(autoUpdateEnabled, {
+                      ...localAutoUpdateSchedule,
+                      intervalUnit: nextUnit,
+                    })
+                  }}
+                >
+                  <option value="minutes">{t('autoUpdateIntervalUnitMinutes')}</option>
+                  <option value="hours">{t('autoUpdateIntervalUnitHours')}</option>
+                </select>
+              </>
+            ) : (
+              <input
+                id="settings-auto-update-daily-time"
+                className="settings-input"
+                type="time"
+                value={localAutoUpdateDailyTime}
+                onChange={(event) => setLocalAutoUpdateDailyTime(event.target.value)}
+                onBlur={() => {
+                  if (autoUpdateScheduleChanged) {
+                    onAutoUpdateConfigChange(autoUpdateEnabled, {
+                      ...localAutoUpdateSchedule,
+                      dailyTime: localAutoUpdateDailyTime,
+                    })
+                  }
+                }}
+              />
+            )}
             <button
               className="btn btn-secondary settings-browse"
               type="button"
@@ -549,7 +664,16 @@ const SettingsPage = ({
             </button>
           </div>
           <div className="settings-helper">
-            {t('autoUpdateIntervalHint', { hours: autoUpdateInterval })}
+            {autoUpdateScheduleType === 'daily'
+              ? t('autoUpdateDailyHint', { time: autoUpdateDailyTime })
+              : t('autoUpdateIntervalHint', {
+                  value: autoUpdateIntervalValue,
+                  unit: t(
+                    autoUpdateIntervalUnit === 'minutes'
+                      ? 'autoUpdateIntervalUnitMinutes'
+                      : 'autoUpdateIntervalUnitHours',
+                  ),
+                })}
           </div>
           {autoUpdateHasLocalSkills ? (
             <div className="settings-helper">
