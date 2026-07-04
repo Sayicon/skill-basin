@@ -23,6 +23,7 @@ import TagsPage from './components/skills/TagsPage'
 import AddSkillModal from './components/skills/modals/AddSkillModal'
 import BulkDeleteModal from './components/skills/modals/BulkDeleteModal'
 import BulkSyncModal from './components/skills/modals/BulkSyncModal'
+import BulkTagsModal from './components/skills/modals/BulkTagsModal'
 import DeleteModal from './components/skills/modals/DeleteModal'
 import EditSkillTagsModal from './components/skills/modals/EditSkillTagsModal'
 import GitPickModal from './components/skills/modals/GitPickModal'
@@ -160,6 +161,7 @@ function App() {
   const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([])
   const [showBulkSyncModal, setShowBulkSyncModal] = useState(false)
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [showBulkTagsModal, setShowBulkTagsModal] = useState(false)
   const [bulkSyncToolIds, setBulkSyncToolIds] = useState<string[]>([])
 
   const isTauri =
@@ -1226,6 +1228,7 @@ function App() {
         setBulkSelectedIds([])
         setShowBulkSyncModal(false)
         setShowBulkDeleteModal(false)
+        setShowBulkTagsModal(false)
       }
       if (view === 'explore') {
         loadFeaturedSkills()
@@ -1429,6 +1432,7 @@ function App() {
         setBulkSelectedIds([])
         setShowBulkSyncModal(false)
         setShowBulkDeleteModal(false)
+        setShowBulkTagsModal(false)
       }
       return next
     })
@@ -1507,6 +1511,83 @@ function App() {
   const handleCloseBulkDelete = useCallback(() => {
     if (!loading) setShowBulkDeleteModal(false)
   }, [loading])
+
+  const handleOpenBulkTags = useCallback(() => {
+    if (bulkSelectedIds.length === 0) return
+    setShowBulkTagsModal(true)
+  }, [bulkSelectedIds.length])
+
+  const handleCloseBulkTags = useCallback(() => {
+    if (!loading) setShowBulkTagsModal(false)
+  }, [loading])
+
+  const handleConfirmBulkTags = useCallback(
+    async (addTagIds: number[], removeTagIds: number[]) => {
+      if (bulkSelectedSkills.length === 0) return
+      if (addTagIds.length === 0 && removeTagIds.length === 0) return
+
+      const addSet = new Set(addTagIds)
+      const removeSet = new Set(removeTagIds)
+      const errors: { title: string; message: string }[] = []
+      setLoading(true)
+      setLoadingStartAt(Date.now())
+      setError(null)
+      try {
+        for (let index = 0; index < bulkSelectedSkills.length; index++) {
+          const skill = bulkSelectedSkills[index]
+          setActionMessage(
+            t('bulk.tagsProgress', {
+              current: index + 1,
+              total: bulkSelectedSkills.length,
+              name: skill.name,
+            }),
+          )
+          const nextTagIds = new Set<number>()
+          for (const tag of skill.tags) {
+            if (!removeSet.has(tag.id)) nextTagIds.add(tag.id)
+          }
+          for (const tagId of addSet) nextTagIds.add(tagId)
+
+          try {
+            await invokeTauri('set_skill_tags', {
+              skillId: skill.id,
+              tagIds: Array.from(nextTagIds),
+            })
+          } catch (err) {
+            errors.push({
+              title: t('bulk.tagsFailedTitle', { name: skill.name }),
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+
+        await loadManagedSkills()
+        await loadTags()
+        setShowBulkTagsModal(false)
+        if (errors.length > 0) {
+          showActionErrors(errors)
+        } else {
+          setBulkSelectedIds([])
+          setBulkMode(false)
+          setSuccessToastMessage(
+            t('bulk.tagsSuccess', { count: bulkSelectedSkills.length }),
+          )
+        }
+      } finally {
+        setLoading(false)
+        setLoadingStartAt(null)
+        setActionMessage(null)
+      }
+    },
+    [
+      bulkSelectedSkills,
+      invokeTauri,
+      loadManagedSkills,
+      loadTags,
+      showActionErrors,
+      t,
+    ],
+  )
 
   const restoreSkillSavedTargets = useCallback(
     async (skill: ManagedSkill) => {
@@ -3268,6 +3349,14 @@ function App() {
                   <button
                     className="btn btn-secondary"
                     type="button"
+                    onClick={handleOpenBulkTags}
+                    disabled={loading || bulkSelectedIds.length === 0}
+                  >
+                    {t('bulk.tags')}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
                     onClick={handleOpenBulkSync}
                     disabled={
                       loading ||
@@ -3422,6 +3511,16 @@ function App() {
         onToggleTool={handleToggleBulkSyncTool}
         onRequestClose={handleCloseBulkSync}
         onConfirm={handleConfirmBulkSync}
+        t={t}
+      />
+
+      <BulkTagsModal
+        open={showBulkTagsModal}
+        loading={loading}
+        selectedSkills={bulkSelectedSkills}
+        tags={tags}
+        onRequestClose={handleCloseBulkTags}
+        onConfirm={handleConfirmBulkTags}
         t={t}
       />
 
