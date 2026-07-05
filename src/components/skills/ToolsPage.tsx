@@ -11,7 +11,8 @@ type ToolsPageProps = {
   toolStatus: ToolStatusDto | null
   toolConfig: ToolConfigDto | null
   onToolConfigChange: (config: ToolConfigDto) => void
-  onBack: () => void
+  embedded?: boolean
+  onBack?: () => void
   t: TFunction
 }
 
@@ -19,6 +20,7 @@ const ToolsPage = ({
   toolStatus,
   toolConfig,
   onToolConfigChange,
+  embedded = false,
   onBack,
   t,
 }: ToolsPageProps) => {
@@ -197,16 +199,18 @@ const ToolsPage = ({
   }
 
   return (
-    <div className="tools-page">
-      <div className="detail-header">
-        <button className="icon-btn" type="button" onClick={onBack} aria-label={t('back')}>
-          <ArrowLeft size={18} />
-        </button>
-        <div>
-          <h2>{t('toolManagement.title')}</h2>
-          <p>{t('toolManagement.pageHint')}</p>
+    <div className={`tools-page${embedded ? ' embedded' : ''}`}>
+      {!embedded ? (
+        <div className="detail-header">
+          <button className="icon-btn" type="button" onClick={onBack} aria-label={t('back')}>
+            <ArrowLeft size={18} />
+          </button>
+          <div>
+            <h2>{t('toolManagement.title')}</h2>
+            <p>{t('toolManagement.pageHint')}</p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="tools-page-body">
         <div className="tools-summary-grid">

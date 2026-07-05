@@ -1,14 +1,14 @@
 import { memo } from 'react'
-import { Layers, Search, Settings, Tag, Wrench } from 'lucide-react'
+import { Layers, Search, Settings, SlidersHorizontal } from 'lucide-react'
 import type { TFunction } from 'i18next'
 
 type HeaderProps = {
   language: string
   loading: boolean
-  activeView: 'myskills' | 'explore' | 'detail' | 'settings' | 'tags' | 'tools'
+  activeView: 'myskills' | 'explore' | 'detail' | 'settings' | 'manage'
   onToggleLanguage: () => void
   onOpenSettings: () => void
-  onViewChange: (view: 'myskills' | 'explore' | 'tags' | 'tools') => void
+  onViewChange: (view: 'myskills' | 'explore' | 'manage') => void
   t: TFunction
 }
 
@@ -47,20 +47,12 @@ const Header = ({
             {t('navExplore')}
           </button>
           <button
-            className={`nav-tab${activeView === 'tags' ? ' active' : ''}`}
+            className={`nav-tab${activeView === 'manage' ? ' active' : ''}`}
             type="button"
-            onClick={() => onViewChange('tags')}
+            onClick={() => onViewChange('manage')}
           >
-            <Tag size={16} />
-            {t('navTags')}
-          </button>
-          <button
-            className={`nav-tab${activeView === 'tools' ? ' active' : ''}`}
-            type="button"
-            onClick={() => onViewChange('tools')}
-          >
-            <Wrench size={16} />
-            {t('navTools')}
+            <SlidersHorizontal size={16} />
+            {t('navManageCenter')}
           </button>
         </nav>
       </div>
