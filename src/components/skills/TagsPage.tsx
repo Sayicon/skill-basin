@@ -8,7 +8,8 @@ type TagsPageProps = {
   untaggedCount: number
   loading: boolean
   formatRelative: (ms: number | null | undefined) => string
-  onBack: () => void
+  embedded?: boolean
+  onBack?: () => void
   onReviewUntagged: () => void
   onViewTag: (tagId: number) => void
   onCreateTag: (name: string) => void
@@ -22,6 +23,7 @@ const TagsPage = ({
   untaggedCount,
   loading,
   formatRelative,
+  embedded = false,
   onBack,
   onReviewUntagged,
   onViewTag,
@@ -46,17 +48,19 @@ const TagsPage = ({
   }
 
   return (
-    <div className="tags-page">
-      <div className="detail-header">
-        <button className="btn btn-secondary" type="button" onClick={onBack}>
-          <ArrowLeft size={16} />
-          {t('back')}
-        </button>
-        <div>
-          <div className="detail-skill-name">{t('tags')}</div>
-          <div className="tags-page-subtitle">{t('tagsHelp')}</div>
+    <div className={`tags-page${embedded ? ' embedded' : ''}`}>
+      {!embedded ? (
+        <div className="detail-header">
+          <button className="btn btn-secondary" type="button" onClick={onBack}>
+            <ArrowLeft size={16} />
+            {t('back')}
+          </button>
+          <div>
+            <div className="detail-skill-name">{t('tags')}</div>
+            <div className="tags-page-subtitle">{t('tagsHelp')}</div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="tags-review-row">
         <div className="tags-review-left">

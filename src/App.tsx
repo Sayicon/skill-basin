@@ -34,6 +34,7 @@ import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import SettingsPage from './components/skills/SettingsPage'
 import ToolsPage from './components/skills/ToolsPage'
+import UpdatesPage from './components/skills/UpdatesPage'
 import {
   getAutoUpdateToastKey,
   shouldKeepWaitingForTriggeredAutoUpdate,
@@ -73,6 +74,9 @@ type SkillScopeState = Record<
     projects: string[]
   }
 >
+
+type ActiveView = 'myskills' | 'explore' | 'detail' | 'settings' | 'manage'
+type ManagementTab = 'tags' | 'tools' | 'updates'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -134,7 +138,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'updated' | 'name'>('updated')
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'project'>('all')
-  const [activeView, setActiveView] = useState<'myskills' | 'explore' | 'detail' | 'settings' | 'tags' | 'tools'>('myskills')
+  const [activeView, setActiveView] = useState<ActiveView>('myskills')
+  const [managementTab, setManagementTab] = useState<ManagementTab>('tags')
   const [detailSkill, setDetailSkill] = useState<ManagedSkill | null>(null)
   const [tags, setTags] = useState<TagWithCountDto[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
@@ -876,7 +881,7 @@ function App() {
 
   useEffect(() => {
     if (!isTauri) return
-    if (activeView !== 'settings') return
+    if (activeView !== 'manage' || managementTab !== 'updates') return
 
     let cancelled = false
     const refreshAutoUpdateConfig = async () => {
@@ -909,6 +914,7 @@ function App() {
     }
   }, [
     activeView,
+    managementTab,
     autoUpdateConfig?.last_status,
     invokeTauri,
     isTauri,
@@ -1221,7 +1227,7 @@ function App() {
   }, [featuredSkills.length, invokeTauri])
 
   const handleViewChange = useCallback(
-    (view: 'myskills' | 'explore' | 'tags' | 'tools') => {
+    (view: 'myskills' | 'explore' | 'manage') => {
       setActiveView(view)
       if (view !== 'myskills') {
         setBulkMode(false)
@@ -1232,6 +1238,9 @@ function App() {
       }
       if (view === 'explore') {
         loadFeaturedSkills()
+      }
+      if (view === 'manage') {
+        setManagementTab('tags')
       }
       if (view === 'myskills') {
         setDetailSkill(null)
@@ -1410,7 +1419,8 @@ function App() {
   }, [])
 
   const handleOpenTagsPage = useCallback(() => {
-    setActiveView('tags')
+    setManagementTab('tags')
+    setActiveView('manage')
   }, [])
 
   const handleReviewUntagged = useCallback(() => {
@@ -3386,28 +3396,77 @@ function App() {
               </div>
             ) : null}
           </div>
-        ) : activeView === 'tags' ? (
-          <TagsPage
-            tags={tags}
-            untaggedCount={untaggedCount}
-            loading={loading}
-            formatRelative={formatRelative}
-            onBack={handleBackToList}
-            onReviewUntagged={handleReviewUntagged}
-            onViewTag={handleViewTag}
-            onCreateTag={handleCreateTag}
-            onRenameTag={handleRenameTag}
-            onDeleteTag={handleDeleteTag}
-            t={t}
-          />
-        ) : activeView === 'tools' ? (
-          <ToolsPage
-            toolStatus={toolStatus}
-            toolConfig={toolConfig}
-            onToolConfigChange={handleToolConfigChange}
-            onBack={handleBackToList}
-            t={t}
-          />
+        ) : activeView === 'manage' ? (
+          <div className="management-page">
+            <div className="management-header">
+              <div className="management-heading">
+                <h1>{t('manageCenterTitle')}</h1>
+                <p>{t('manageCenterHelp')}</p>
+              </div>
+              <div className="management-tab-list" role="tablist" aria-label={t('manageCenterTitle')}>
+                <button
+                  className={`management-tab${managementTab === 'tags' ? ' active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={managementTab === 'tags'}
+                  onClick={() => setManagementTab('tags')}
+                >
+                  {t('manageTabs.tags')}
+                </button>
+                <button
+                  className={`management-tab${managementTab === 'tools' ? ' active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={managementTab === 'tools'}
+                  onClick={() => setManagementTab('tools')}
+                >
+                  {t('manageTabs.tools')}
+                </button>
+                <button
+                  className={`management-tab${managementTab === 'updates' ? ' active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={managementTab === 'updates'}
+                  onClick={() => setManagementTab('updates')}
+                >
+                  {t('manageTabs.updates')}
+                </button>
+              </div>
+            </div>
+            <div className="management-panel">
+              {managementTab === 'tags' ? (
+                <TagsPage
+                  embedded
+                  tags={tags}
+                  untaggedCount={untaggedCount}
+                  loading={loading}
+                  formatRelative={formatRelative}
+                  onReviewUntagged={handleReviewUntagged}
+                  onViewTag={handleViewTag}
+                  onCreateTag={handleCreateTag}
+                  onRenameTag={handleRenameTag}
+                  onDeleteTag={handleDeleteTag}
+                  t={t}
+                />
+              ) : managementTab === 'tools' ? (
+                <ToolsPage
+                  embedded
+                  toolStatus={toolStatus}
+                  toolConfig={toolConfig}
+                  onToolConfigChange={handleToolConfigChange}
+                  t={t}
+                />
+              ) : (
+                <UpdatesPage
+                  autoUpdateConfig={autoUpdateConfig}
+                  onAutoUpdateConfigChange={handleAutoUpdateConfigChange}
+                  onRunAutoUpdateNow={handleTriggerAutoUpdateTaskNow}
+                  autoUpdateTriggering={autoUpdateTriggering}
+                  t={t}
+                />
+              )}
+            </div>
+          </div>
         ) : activeView === 'settings' ? (
           <SettingsPage
             isTauri={isTauri}
@@ -3415,7 +3474,6 @@ function App() {
             storagePath={storagePath}
             gitCacheCleanupDays={gitCacheCleanupDays}
             gitCacheTtlSecs={gitCacheTtlSecs}
-            autoUpdateConfig={autoUpdateConfig}
             themePreference={themePreference}
             onPickStoragePath={handlePickStoragePath}
             onToggleLanguage={toggleLanguage}
@@ -3427,9 +3485,6 @@ function App() {
             onGithubTokenChange={handleGithubTokenChange}
             githubProxyConfig={githubProxyConfig}
             onGithubProxyConfigChange={handleGithubProxyConfigChange}
-            onAutoUpdateConfigChange={handleAutoUpdateConfigChange}
-            onRunAutoUpdateNow={handleTriggerAutoUpdateTaskNow}
-            autoUpdateTriggering={autoUpdateTriggering}
             onBack={handleCloseSettings}
             t={t}
           />
