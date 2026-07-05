@@ -1,5 +1,5 @@
 import { memo, useState } from 'react'
-import { Box, Copy, Folder, Github, RefreshCw, Tag, Trash2 } from 'lucide-react'
+import { Box, Copy, Folder, Github, Power, RefreshCw, Tag, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
 import type { ManagedSkill, ToolOption } from './types'
@@ -13,15 +13,19 @@ type SkillCardProps = {
   skill: ManagedSkill
   installedTools: ToolOption[]
   loading: boolean
+  bulkMode: boolean
+  bulkSelected: boolean
   getGithubInfo: (url: string | null | undefined) => GithubInfo | null
   getSkillSourceLabel: (skill: ManagedSkill) => string
   formatRelative: (ms: number | null | undefined) => string
   onUpdate: (skill: ManagedSkill) => void
   onDelete: (skillId: string) => void
+  onToggleEnabled: (skill: ManagedSkill) => void
   onToggleTool: (skill: ManagedSkill, toolId: string) => void
   onOpenScope: (skill: ManagedSkill) => void
   onOpenDetail: (skill: ManagedSkill) => void
   onEditTags: (skill: ManagedSkill) => void
+  onToggleBulkSelection: (skillId: string) => void
   getSkillScope: (skill: ManagedSkill) => 'global' | 'project'
   getSkillProjects: (skill: ManagedSkill) => string[]
   t: TFunction
@@ -33,15 +37,19 @@ const SkillCard = ({
   skill,
   installedTools,
   loading,
+  bulkMode,
+  bulkSelected,
   getGithubInfo,
   getSkillSourceLabel,
   formatRelative,
   onUpdate,
   onDelete,
+  onToggleEnabled,
   onToggleTool,
   onOpenScope,
   onOpenDetail,
   onEditTags,
+  onToggleBulkSelection,
   getSkillScope,
   getSkillProjects,
   t,
@@ -58,6 +66,7 @@ const SkillCard = ({
   const copyValue = (github?.href ?? skill.source_ref ?? '').trim()
   const skillScope = getSkillScope(skill)
   const projectCount = getSkillProjects(skill).length
+  const skillEnabled = skill.enabled !== false
 
   const handleCopy = async () => {
     if (!copyValue) return
@@ -76,7 +85,7 @@ const SkillCard = ({
     const target = skill.targets.find(
       (tgt) => tgt.tool === tool.id && (tgt.scope ?? 'global') === skillScope,
     )
-    if (target) {
+    if (target && (!skillEnabled || target.status !== 'disabled')) {
       syncedTools.push({ tool, target })
     } else {
       unsyncedTools.push(tool)
@@ -90,7 +99,20 @@ const SkillCard = ({
   const showUnsyncedTools = expanded || !needsCollapse
 
   return (
-    <div className="skill-card">
+    <div
+      className={`skill-card${bulkMode ? ' bulk-mode' : ''}${bulkSelected ? ' bulk-selected' : ''}${!skillEnabled ? ' disabled-skill' : ''}`}
+    >
+      {bulkMode ? (
+        <label className="bulk-skill-check" aria-label={t('bulk.toggleSkill')}>
+          <input
+            type="checkbox"
+            checked={bulkSelected}
+            onChange={() => onToggleBulkSelection(skill.id)}
+            disabled={loading}
+          />
+          <span />
+        </label>
+      ) : null}
       <div className="skill-icon">{iconNode}</div>
       <div className="skill-main">
         <div className="skill-header-row">
@@ -123,6 +145,9 @@ const SkillCard = ({
                 </button>
               ) : null}
             </div>
+          ) : null}
+          {!skillEnabled ? (
+            <span className="skill-disabled-badge">{t('disabled')}</span>
           ) : null}
         </div>
         {skill.description ? (
@@ -183,7 +208,10 @@ const SkillCard = ({
               type="button"
               className="tool-pill active"
               title={`${tool.label} (${target.mode ?? t('unknown')})`}
-              onClick={() => void onToggleTool(skill, tool.id)}
+              onClick={() => {
+                if (skillEnabled) void onToggleTool(skill, tool.id)
+              }}
+              disabled={!skillEnabled}
             >
               <span className="status-badge" />
               {tool.label}
@@ -208,9 +236,9 @@ const SkillCard = ({
                   className={`tool-pill ${disabled ? 'disabled' : 'inactive'}`}
                   title={tool.label}
                   onClick={() => {
-                    if (!disabled) void onToggleTool(skill, tool.id)
+                    if (!disabled && skillEnabled) void onToggleTool(skill, tool.id)
                   }}
-                  disabled={disabled}
+                  disabled={disabled || !skillEnabled}
                 >
                   {tool.label}
                 </button>
@@ -233,10 +261,20 @@ const SkillCard = ({
           className="card-btn primary-action"
           type="button"
           onClick={() => onUpdate(skill)}
-          disabled={loading}
+          disabled={loading || !skillEnabled}
           aria-label={t('update')}
         >
           <RefreshCw size={16} />
+        </button>
+        <button
+          className={`card-btn power-action${skillEnabled ? ' enabled' : ''}`}
+          type="button"
+          onClick={() => onToggleEnabled(skill)}
+          disabled={loading}
+          aria-label={skillEnabled ? t('disableSkill') : t('enableSkill')}
+          title={skillEnabled ? t('disableSkill') : t('enableSkill')}
+        >
+          <Power size={16} />
         </button>
         <button
           className="card-btn danger-action"

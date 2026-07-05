@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type SetStateAction,
+} from 'react'
 import type { Update } from '@tauri-apps/plugin-updater'
 import './App.css'
 import { useTranslation } from 'react-i18next'
@@ -13,6 +21,9 @@ import LoadingOverlay from './components/skills/LoadingOverlay'
 import SkillsList from './components/skills/SkillsList'
 import TagsPage from './components/skills/TagsPage'
 import AddSkillModal from './components/skills/modals/AddSkillModal'
+import BulkDeleteModal from './components/skills/modals/BulkDeleteModal'
+import BulkSyncModal from './components/skills/modals/BulkSyncModal'
+import BulkTagsModal from './components/skills/modals/BulkTagsModal'
 import DeleteModal from './components/skills/modals/DeleteModal'
 import EditSkillTagsModal from './components/skills/modals/EditSkillTagsModal'
 import GitPickModal from './components/skills/modals/GitPickModal'
@@ -22,15 +33,35 @@ import NewToolsModal from './components/skills/modals/NewToolsModal'
 import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import SettingsPage from './components/skills/SettingsPage'
+import ToolsPage from './components/skills/ToolsPage'
+import UpdatesPage from './components/skills/UpdatesPage'
+import {
+  getAutoUpdateToastKey,
+  shouldKeepWaitingForTriggeredAutoUpdate,
+} from './components/skills/autoUpdateSettings'
+import {
+  buildInstallSyncJobs,
+  filterTargetsForScope,
+  getAddedProjectPaths,
+  isLatestSaveBatch,
+  normalizeProjectSharedTargets,
+  normalizeProjectPaths,
+  resolveProjectPathsUpdate,
+  selectInstallToolIds,
+  type InstallScope,
+} from './components/skills/installScope'
 import type {
+  AutoUpdateConfigDto,
   FeaturedSkillDto,
   GitSkillCandidate,
+  GithubProxyConfigDto,
   InstallResultDto,
   LocalSkillCandidate,
   ManagedSkill,
   OnboardingPlan,
   OnlineSkillDto,
   TagWithCountDto,
+  ToolConfigDto,
   ToolOption,
   ToolStatusDto,
   UpdateResultDto,
@@ -43,6 +74,9 @@ type SkillScopeState = Record<
     projects: string[]
   }
 >
+
+type ActiveView = 'myskills' | 'explore' | 'detail' | 'settings' | 'manage'
+type ManagementTab = 'tags' | 'tools' | 'updates'
 
 function App() {
   const { t, i18n } = useTranslation()
@@ -87,6 +121,7 @@ function App() {
   >({})
   const [loadingStartAt, setLoadingStartAt] = useState<number | null>(null)
   const [toolStatus, setToolStatus] = useState<ToolStatusDto | null>(null)
+  const [toolConfig, setToolConfig] = useState<ToolConfigDto | null>(null)
   const [showNewToolsModal, setShowNewToolsModal] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -103,7 +138,8 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'updated' | 'name'>('updated')
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'project'>('all')
-  const [activeView, setActiveView] = useState<'myskills' | 'explore' | 'detail' | 'settings' | 'tags'>('myskills')
+  const [activeView, setActiveView] = useState<ActiveView>('myskills')
+  const [managementTab, setManagementTab] = useState<ManagementTab>('tags')
   const [detailSkill, setDetailSkill] = useState<ManagedSkill | null>(null)
   const [tags, setTags] = useState<TagWithCountDto[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>([])
@@ -121,7 +157,17 @@ function App() {
   const [autoSelectSkillName, setAutoSelectSkillName] = useState<string | null>(null)
   const [scopeModalSkill, setScopeModalSkill] = useState<ManagedSkill | null>(null)
   const [recentProjects, setRecentProjects] = useState<string[]>([])
+  const [installScope, setInstallScope] = useState<InstallScope>('global')
+  const [installProjects, setInstallProjects] = useState<string[]>([])
+  const installProjectsRef = useRef<string[]>([])
+  const installProjectsSaveSequenceRef = useRef(0)
   const [skillScopeState, setSkillScopeState] = useState<SkillScopeState>({})
+  const [bulkMode, setBulkMode] = useState(false)
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<string[]>([])
+  const [showBulkSyncModal, setShowBulkSyncModal] = useState(false)
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
+  const [showBulkTagsModal, setShowBulkTagsModal] = useState(false)
+  const [bulkSyncToolIds, setBulkSyncToolIds] = useState<string[]>([])
 
   const isTauri =
     typeof window !== 'undefined' &&
@@ -420,6 +466,33 @@ function App() {
   }, [isTauri, invokeTauri])
 
   useEffect(() => {
+    if (!isTauri) return
+    invokeTauri<GithubProxyConfigDto>('get_github_proxy_config')
+      .then((config) => setGithubProxyConfig(config))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [isTauri, invokeTauri])
+
+  useEffect(() => {
+    if (!isTauri) return
+    invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+      .then((config) => setAutoUpdateConfig(config))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [isTauri, invokeTauri])
+
+  useEffect(() => {
+    if (!isTauri) return
+    invokeTauri<ToolConfigDto>('get_tool_config')
+      .then((config) => setToolConfig(config))
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : String(err))
+      })
+  }, [isTauri, invokeTauri])
+
+  useEffect(() => {
     if (isTauri) {
       void loadPlan()
     }
@@ -495,15 +568,19 @@ function App() {
   }, [error, formatErrorMessage])
 
   const toolInfos = useMemo(() => toolStatus?.tools ?? [], [toolStatus])
+  const enabledToolInfos = useMemo(
+    () => toolInfos.filter((info) => info.enabled),
+    [toolInfos],
+  )
 
   const tools: ToolOption[] = useMemo(() => {
-    return toolInfos.map((info) => ({
+    return enabledToolInfos.map((info) => ({
       id: info.key,
       // Prefer i18n label if present; fallback to backend label.
       label: t(`tools.${info.key}`, { defaultValue: info.label }),
       supports_project_scope: info.supports_project_scope,
     }))
-  }, [t, toolInfos])
+  }, [t, enabledToolInfos])
 
   const toolLabelById = useMemo(() => {
     const out: Record<string, string> = {}
@@ -514,7 +591,7 @@ function App() {
   const sharedToolIdsByToolId = useMemo(() => {
     // toolId -> all toolIds that share the same skills_dir.
     const byDir: Record<string, string[]> = {}
-    for (const info of toolInfos) {
+    for (const info of enabledToolInfos) {
       const dir = info.skills_dir
       if (!byDir[dir]) byDir[dir] = []
       byDir[dir].push(info.key)
@@ -526,7 +603,22 @@ function App() {
       for (const id of ids) out[id] = ids
     }
     return out
-  }, [toolInfos])
+  }, [enabledToolInfos])
+
+  const sharedProjectToolIdsByToolId = useMemo(() => {
+    const byDir: Record<string, string[]> = {}
+    for (const info of enabledToolInfos) {
+      const dir = info.project_skills_dir
+      if (!byDir[dir]) byDir[dir] = []
+      byDir[dir].push(info.key)
+    }
+    const out: Record<string, string[]> = {}
+    for (const ids of Object.values(byDir)) {
+      if (ids.length <= 1) continue
+      for (const id of ids) out[id] = ids
+    }
+    return out
+  }, [enabledToolInfos])
 
   const uniqueToolIdsBySkillsDir = useCallback(
     (toolIds: string[]) => {
@@ -534,7 +626,7 @@ function App() {
       const wanted = new Set(toolIds)
       const seen = new Set<string>()
       const out: string[] = []
-      for (const tool of toolInfos) {
+      for (const tool of enabledToolInfos) {
         if (!wanted.has(tool.key)) continue
         if (seen.has(tool.skills_dir)) continue
         seen.add(tool.skills_dir)
@@ -542,7 +634,23 @@ function App() {
       }
       return out
     },
-    [toolInfos],
+    [enabledToolInfos],
+  )
+
+  const uniqueToolIdsByProjectSkillsDir = useCallback(
+    (toolIds: string[]) => {
+      const wanted = new Set(toolIds)
+      const seen = new Set<string>()
+      const out: string[] = []
+      for (const tool of enabledToolInfos) {
+        if (!wanted.has(tool.key)) continue
+        if (seen.has(tool.project_skills_dir)) continue
+        seen.add(tool.project_skills_dir)
+        out.push(tool.key)
+      }
+      return out
+    },
+    [enabledToolInfos],
   )
 
   const installedToolIds = useMemo(
@@ -566,6 +674,95 @@ function App() {
     () => installedToolIds.filter((toolId) => toolSupportsProjectScope(toolId)),
     [installedToolIds, toolSupportsProjectScope],
   )
+
+  const syncInstalledSkill = useCallback(
+    async (
+      created: InstallResultDto,
+    ): Promise<{ title: string; message: string }[]> => {
+      const toolIds = selectInstallToolIds(
+        tools,
+        syncTargets,
+        installedToolIds,
+        installScope,
+        uniqueToolIdsBySkillsDir,
+        uniqueToolIdsByProjectSkillsDir,
+      )
+      const jobs = buildInstallSyncJobs(
+        toolIds,
+        installScope,
+        installProjects,
+      )
+
+      if (jobs.length === 0) {
+        return [
+          {
+            title: t('errors.unsyncedTitle', { name: created.name }),
+            message:
+              installScope === 'project' &&
+              normalizeProjectPaths(installProjects).length === 0
+                ? t('projectSync.projectRequired')
+                : t('errors.noSyncTargets'),
+          },
+        ]
+      }
+
+      const collectedErrors: { title: string; message: string }[] = []
+      for (let index = 0; index < jobs.length; index++) {
+        const job = jobs[index]
+        const toolLabel = toolLabelById[job.toolId] ?? job.toolId
+        setActionMessage(
+          t('actions.syncStep', {
+            index: index + 1,
+            total: jobs.length,
+            name: created.name,
+            tool: toolLabel,
+          }),
+        )
+        try {
+          await invokeTauri('sync_skill_to_tool', {
+            sourcePath: created.central_path,
+            skillId: created.skill_id,
+            tool: job.toolId,
+            name: created.name,
+            scope: job.scope,
+            ...(job.scope === 'project'
+              ? { projectPath: job.projectPath }
+              : {}),
+            overwriteIfSameContent: true,
+          })
+        } catch (err) {
+          collectedErrors.push({
+            title: t('errors.syncFailedTitle', {
+              name: created.name,
+              tool: toolLabel,
+            }),
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+
+      return collectedErrors
+    },
+    [
+      installProjects,
+      installScope,
+      installedToolIds,
+      invokeTauri,
+      syncTargets,
+      t,
+      toolLabelById,
+      tools,
+      uniqueToolIdsBySkillsDir,
+      uniqueToolIdsByProjectSkillsDir,
+    ],
+  )
+
+  const resetInstallScope = useCallback(() => {
+    setInstallScope('global')
+    installProjectsRef.current = []
+    installProjectsSaveSequenceRef.current += 1
+    setInstallProjects([])
+  }, [])
 
   const getSkillProjects = useCallback(
     (skill: ManagedSkill) => {
@@ -636,11 +833,94 @@ function App() {
     () => managedSkills.filter((skill) => skill.tags.length === 0).length,
     [managedSkills],
   )
+  const bulkSelectedSkills = useMemo(() => {
+    const selectedSet = new Set(bulkSelectedIds)
+    return managedSkills.filter((skill) => selectedSet.has(skill.id))
+  }, [bulkSelectedIds, managedSkills])
+
+  const bulkSelectedNames = useMemo(
+    () => bulkSelectedSkills.map((skill) => skill.name),
+    [bulkSelectedSkills],
+  )
+  const bulkHasDisabledSelected = useMemo(
+    () => bulkSelectedSkills.some((skill) => skill.enabled === false),
+    [bulkSelectedSkills],
+  )
+  const bulkShouldEnable = useMemo(
+    () =>
+      bulkSelectedSkills.length > 0 &&
+      bulkSelectedSkills.every((skill) => skill.enabled === false),
+    [bulkSelectedSkills],
+  )
+  const allVisibleBulkSelected = useMemo(() => {
+    if (visibleSkills.length === 0) return false
+    const selectedSet = new Set(bulkSelectedIds)
+    return visibleSkills.every((skill) => selectedSet.has(skill.id))
+  }, [bulkSelectedIds, visibleSkills])
+
+  useEffect(() => {
+    const existingIds = new Set(managedSkills.map((skill) => skill.id))
+    setBulkSelectedIds((current) => current.filter((id) => existingIds.has(id)))
+  }, [managedSkills])
 
   const [storagePath, setStoragePath] = useState<string>(t('notAvailable'))
   const [gitCacheCleanupDays, setGitCacheCleanupDays] = useState<number>(30)
   const [gitCacheTtlSecs, setGitCacheTtlSecs] = useState<number>(60)
   const [githubToken, setGithubToken] = useState<string>('')
+  const [githubProxyConfig, setGithubProxyConfig] =
+    useState<GithubProxyConfigDto>({
+      enabled: false,
+      port: 7890,
+      url: '',
+      auto_detected: false,
+    })
+  const [autoUpdateConfig, setAutoUpdateConfig] =
+    useState<AutoUpdateConfigDto | null>(null)
+  const [autoUpdateTriggering, setAutoUpdateTriggering] = useState(false)
+  const autoUpdateLastRunRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!isTauri) return
+    if (activeView !== 'manage' || managementTab !== 'updates') return
+
+    let cancelled = false
+    const refreshAutoUpdateConfig = async () => {
+      const config = await invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+      if (cancelled) return
+
+      const previousLastRun = autoUpdateLastRunRef.current
+      const nextLastRun = config.last_run_at ?? null
+      autoUpdateLastRunRef.current = nextLastRun
+      setAutoUpdateConfig(config)
+
+      if (
+        previousLastRun !== null &&
+        nextLastRun !== null &&
+        nextLastRun !== previousLastRun &&
+        config.last_status !== 'running'
+      ) {
+        await loadManagedSkills()
+      }
+    }
+
+    void refreshAutoUpdateConfig().catch(() => {})
+    const timer = window.setInterval(() => {
+      void refreshAutoUpdateConfig().catch(() => {})
+    }, autoUpdateConfig?.last_status === 'running' ? 2000 : 10000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [
+    activeView,
+    managementTab,
+    autoUpdateConfig?.last_status,
+    invokeTauri,
+    isTauri,
+    loadManagedSkills,
+  ])
+
   const handlePickStoragePath = useCallback(async () => {
     try {
       if (!isTauri) {
@@ -706,6 +986,189 @@ function App() {
     },
     [invokeTauri, isTauri],
   )
+  const handleGithubProxyConfigChange = useCallback(
+    async (enabled: boolean, port: number) => {
+      const normalizedPort = Math.max(1, Math.min(Math.round(port), 65535))
+      setGithubProxyConfig((prev) => ({
+        ...prev,
+        enabled,
+        port: normalizedPort,
+        url: enabled ? `http://127.0.0.1:${normalizedPort}` : '',
+        auto_detected: false,
+      }))
+      if (!isTauri) return
+      try {
+        const saved = await invokeTauri<GithubProxyConfigDto>(
+          'set_github_proxy_config',
+          {
+            enabled,
+            port: normalizedPort,
+          },
+        )
+        setGithubProxyConfig(saved)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        void invokeTauri<GithubProxyConfigDto>('get_github_proxy_config')
+          .then((config) => setGithubProxyConfig(config))
+          .catch(() => {})
+      }
+    },
+    [invokeTauri, isTauri],
+  )
+  const handleToolConfigChange = useCallback(
+    async (nextConfig: ToolConfigDto) => {
+      setToolConfig(nextConfig)
+      if (!isTauri) return
+      try {
+        const saved = await invokeTauri<ToolConfigDto>('set_tool_config', {
+          config: nextConfig,
+        })
+        setToolConfig(saved)
+        const status = await invokeTauri<ToolStatusDto>('get_tool_status')
+        setToolStatus(status)
+        setSyncTargets((prev) => {
+          const installed = new Set(status.installed)
+          const next: Record<string, boolean> = {}
+          for (const info of status.tools) {
+            next[info.key] = Boolean(prev[info.key]) && installed.has(info.key)
+          }
+          return next
+        })
+        toast.success(t('toolManagement.saved'), { duration: 1600 })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [invokeTauri, isTauri, t],
+  )
+  const handleAutoUpdateConfigChange = useCallback(
+    async (
+      enabled: boolean,
+      schedule: {
+        scheduleType: 'interval' | 'daily'
+        intervalValue: number
+        intervalUnit: 'minutes' | 'hours'
+        dailyTime: string
+      },
+    ) => {
+      const normalizedIntervalValue = schedule.intervalUnit === 'minutes'
+        ? Math.max(15, Math.min(schedule.intervalValue, 24 * 30 * 60))
+        : Math.max(1, Math.min(schedule.intervalValue, 24 * 30))
+      const normalizedDailyTime = /^\d{2}:\d{2}$/.test(schedule.dailyTime)
+        ? schedule.dailyTime
+        : '03:00'
+      const normalizedIntervalHours = schedule.scheduleType === 'daily'
+        ? 24
+        : schedule.intervalUnit === 'minutes'
+          ? Math.max(1, Math.ceil(normalizedIntervalValue / 60))
+          : normalizedIntervalValue
+      const previousEnabled = autoUpdateConfig?.enabled
+      setAutoUpdateConfig((prev) => ({
+        enabled,
+        interval_hours: normalizedIntervalHours,
+        schedule_type: schedule.scheduleType,
+        interval_value: normalizedIntervalValue,
+        interval_unit: schedule.intervalUnit,
+        daily_time: normalizedDailyTime,
+        local_skill_count: prev?.local_skill_count ?? 0,
+        protected_local_skill_count: prev?.protected_local_skill_count ?? 0,
+        task_registered: prev?.task_registered ?? false,
+        task_status_detail: prev?.task_status_detail ?? '',
+        last_run_at: prev?.last_run_at ?? null,
+        last_started_at: prev?.last_started_at ?? null,
+        last_finished_at: prev?.last_finished_at ?? null,
+        last_status: prev?.last_status ?? null,
+        last_error: prev?.last_error ?? null,
+        last_checked: prev?.last_checked ?? 0,
+        last_updated: prev?.last_updated ?? 0,
+        last_failed: prev?.last_failed ?? 0,
+        progress: prev?.progress ?? {
+          total: 0,
+          succeeded: [],
+          failed: [],
+          running: null,
+          pending: [],
+        },
+      }))
+      if (!isTauri) return
+      try {
+        const updated = await invokeTauri<AutoUpdateConfigDto>(
+          'set_auto_update_config',
+          {
+            enabled,
+            intervalHours: normalizedIntervalHours,
+            scheduleType: schedule.scheduleType,
+            intervalValue: normalizedIntervalValue,
+            intervalUnit: schedule.intervalUnit,
+            dailyTime: normalizedDailyTime,
+          },
+        )
+        setAutoUpdateConfig(updated)
+        setSuccessToastMessage(t(getAutoUpdateToastKey(previousEnabled, enabled)))
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+        void invokeTauri<AutoUpdateConfigDto>('get_auto_update_config')
+          .then((config) => setAutoUpdateConfig(config))
+          .catch(() => {})
+      }
+    },
+    [autoUpdateConfig?.enabled, invokeTauri, isTauri, t],
+  )
+  const handleTriggerAutoUpdateTaskNow = useCallback(async () => {
+    if (!isTauri || autoUpdateTriggering) return
+    const triggeredAt = Date.now()
+    setAutoUpdateTriggering(true)
+    setError(null)
+    setAutoUpdateConfig((prev) => prev ? {
+      ...prev,
+      last_run_at: triggeredAt,
+      last_started_at: triggeredAt,
+      last_finished_at: null,
+      last_status: 'running',
+      last_error: null,
+      last_checked: 0,
+      last_updated: 0,
+      last_failed: 0,
+      progress: {
+        total: 0,
+        succeeded: [],
+        failed: [],
+        running: null,
+        pending: [],
+      },
+    } : prev)
+    try {
+      await invokeTauri('trigger_auto_update_task_now_cmd')
+      setSuccessToastMessage(t('autoUpdateTaskTriggered'))
+      let sawRunning = false
+      for (let attempt = 0; attempt < 30; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 2000))
+        const latestConfig = await invokeTauri<AutoUpdateConfigDto>(
+          'get_auto_update_config',
+        )
+        if (latestConfig.last_status === 'running') {
+          sawRunning = true
+        }
+        const keepWaiting = shouldKeepWaitingForTriggeredAutoUpdate(
+          latestConfig,
+          triggeredAt,
+          sawRunning,
+        )
+        if (keepWaiting && latestConfig.last_status !== 'running') {
+          continue
+        }
+        setAutoUpdateConfig(latestConfig)
+        if (!keepWaiting) {
+          await loadManagedSkills()
+          break
+        }
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setAutoUpdateTriggering(false)
+    }
+  }, [autoUpdateTriggering, invokeTauri, isTauri, loadManagedSkills, t])
   const handleClearGitCacheNow = useCallback(async () => {
     if (!isTauri) {
       setError(t('errors.notTauri'))
@@ -764,10 +1227,20 @@ function App() {
   }, [featuredSkills.length, invokeTauri])
 
   const handleViewChange = useCallback(
-    (view: 'myskills' | 'explore' | 'tags') => {
+    (view: 'myskills' | 'explore' | 'manage') => {
       setActiveView(view)
+      if (view !== 'myskills') {
+        setBulkMode(false)
+        setBulkSelectedIds([])
+        setShowBulkSyncModal(false)
+        setShowBulkDeleteModal(false)
+        setShowBulkTagsModal(false)
+      }
       if (view === 'explore') {
         loadFeaturedSkills()
+      }
+      if (view === 'manage') {
+        setManagementTab('tags')
       }
       if (view === 'myskills') {
         setDetailSkill(null)
@@ -777,6 +1250,8 @@ function App() {
   )
 
   const handleOpenDetail = useCallback((skill: ManagedSkill) => {
+    setBulkMode(false)
+    setBulkSelectedIds([])
     setDetailSkill(skill)
     setActiveView('detail')
   }, [])
@@ -819,9 +1294,10 @@ function App() {
 
 
   const handleOpenAdd = useCallback(() => {
+    resetInstallScope()
     setShowAddModal(true)
     setAddModalTagIds([])
-  }, [])
+  }, [resetInstallScope])
 
   const applySelectedAddModalTags = useCallback(
     async (skillId: string, skillName: string) => {
@@ -849,8 +1325,9 @@ function App() {
     if (!loading) {
       setShowAddModal(false)
       setAddModalTagIds([])
+      resetInstallScope()
     }
-  }, [loading])
+  }, [loading, resetInstallScope])
 
   const handleCloseImport = useCallback(() => {
     if (!loading) setShowImportModal(false)
@@ -885,6 +1362,7 @@ function App() {
     setGitCandidates([])
     setGitCandidateSelected({})
     setGitCandidatesRepoUrl('')
+    setShowAddModal(true)
   }, [loading])
 
   const handleCloseLocalPick = useCallback(() => {
@@ -897,6 +1375,7 @@ function App() {
     setLocalCandidates([])
     setLocalCandidateSelected({})
     setLocalCandidatesBasePath('')
+    setShowAddModal(true)
   }, [loading])
 
   const handleSortChange = useCallback((value: 'updated' | 'name') => {
@@ -940,7 +1419,8 @@ function App() {
   }, [])
 
   const handleOpenTagsPage = useCallback(() => {
-    setActiveView('tags')
+    setManagementTab('tags')
+    setActiveView('manage')
   }, [])
 
   const handleReviewUntagged = useCallback(() => {
@@ -954,6 +1434,521 @@ function App() {
     setIncludeUntagged(false)
     setActiveView('myskills')
   }, [])
+
+  const handleToggleBulkMode = useCallback(() => {
+    setBulkMode((current) => {
+      const next = !current
+      if (!next) {
+        setBulkSelectedIds([])
+        setShowBulkSyncModal(false)
+        setShowBulkDeleteModal(false)
+        setShowBulkTagsModal(false)
+      }
+      return next
+    })
+  }, [])
+
+  const handleToggleBulkSelection = useCallback((skillId: string) => {
+    setBulkSelectedIds((current) =>
+      current.includes(skillId)
+        ? current.filter((id) => id !== skillId)
+        : [...current, skillId],
+    )
+  }, [])
+
+  const handleSelectVisibleSkills = useCallback(() => {
+    setBulkMode(true)
+    setBulkSelectedIds((current) => {
+      const visibleIds = visibleSkills.map((skill) => skill.id)
+      const visibleSet = new Set(visibleIds)
+      const allVisibleSelected =
+        visibleIds.length > 0 && visibleIds.every((id) => current.includes(id))
+      if (allVisibleSelected) {
+        return current.filter((id) => !visibleSet.has(id))
+      }
+      return Array.from(new Set([...current, ...visibleIds]))
+    })
+  }, [visibleSkills])
+
+  const handleOpenBulkSync = useCallback(() => {
+    if (bulkSelectedIds.length === 0) return
+    if (bulkSelectedSkills.some((skill) => skill.enabled === false)) {
+      toast.error(t('bulk.enableBeforeSync'))
+      return
+    }
+    const installedToolSet = new Set(installedToolIds)
+    const selectedToolSet = new Set<string>()
+    for (const skill of bulkSelectedSkills) {
+      const skillScope = getSkillScope(skill)
+      for (const target of skill.targets) {
+        if ((target.scope ?? 'global') !== skillScope) continue
+        if (!installedToolSet.has(target.tool)) continue
+        selectedToolSet.add(target.tool)
+      }
+    }
+    setBulkSyncToolIds(
+      installedTools
+        .map((tool) => tool.id)
+        .filter((toolId) => selectedToolSet.has(toolId)),
+    )
+    setShowBulkSyncModal(true)
+  }, [
+    bulkSelectedIds.length,
+    bulkSelectedSkills,
+    getSkillScope,
+    installedToolIds,
+    installedTools,
+    t,
+  ])
+
+  const handleToggleBulkSyncTool = useCallback((toolId: string) => {
+    setBulkSyncToolIds((current) =>
+      current.includes(toolId)
+        ? current.filter((id) => id !== toolId)
+        : [...current, toolId],
+    )
+  }, [])
+
+  const handleCloseBulkSync = useCallback(() => {
+    if (!loading) setShowBulkSyncModal(false)
+  }, [loading])
+
+  const handleOpenBulkDelete = useCallback(() => {
+    if (bulkSelectedIds.length === 0) return
+    setShowBulkDeleteModal(true)
+  }, [bulkSelectedIds.length])
+
+  const handleCloseBulkDelete = useCallback(() => {
+    if (!loading) setShowBulkDeleteModal(false)
+  }, [loading])
+
+  const handleOpenBulkTags = useCallback(() => {
+    if (bulkSelectedIds.length === 0) return
+    setShowBulkTagsModal(true)
+  }, [bulkSelectedIds.length])
+
+  const handleCloseBulkTags = useCallback(() => {
+    if (!loading) setShowBulkTagsModal(false)
+  }, [loading])
+
+  const handleConfirmBulkTags = useCallback(
+    async (addTagIds: number[], removeTagIds: number[]) => {
+      if (bulkSelectedSkills.length === 0) return
+      if (addTagIds.length === 0 && removeTagIds.length === 0) return
+
+      const addSet = new Set(addTagIds)
+      const removeSet = new Set(removeTagIds)
+      const errors: { title: string; message: string }[] = []
+      setLoading(true)
+      setLoadingStartAt(Date.now())
+      setError(null)
+      try {
+        for (let index = 0; index < bulkSelectedSkills.length; index++) {
+          const skill = bulkSelectedSkills[index]
+          setActionMessage(
+            t('bulk.tagsProgress', {
+              current: index + 1,
+              total: bulkSelectedSkills.length,
+              name: skill.name,
+            }),
+          )
+          const nextTagIds = new Set<number>()
+          for (const tag of skill.tags) {
+            if (!removeSet.has(tag.id)) nextTagIds.add(tag.id)
+          }
+          for (const tagId of addSet) nextTagIds.add(tagId)
+
+          try {
+            await invokeTauri('set_skill_tags', {
+              skillId: skill.id,
+              tagIds: Array.from(nextTagIds),
+            })
+          } catch (err) {
+            errors.push({
+              title: t('bulk.tagsFailedTitle', { name: skill.name }),
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+
+        await loadManagedSkills()
+        await loadTags()
+        setShowBulkTagsModal(false)
+        if (errors.length > 0) {
+          showActionErrors(errors)
+        } else {
+          setBulkSelectedIds([])
+          setBulkMode(false)
+          setSuccessToastMessage(
+            t('bulk.tagsSuccess', { count: bulkSelectedSkills.length }),
+          )
+        }
+      } finally {
+        setLoading(false)
+        setLoadingStartAt(null)
+        setActionMessage(null)
+      }
+    },
+    [
+      bulkSelectedSkills,
+      invokeTauri,
+      loadManagedSkills,
+      loadTags,
+      showActionErrors,
+      t,
+    ],
+  )
+
+  const restoreSkillSavedTargets = useCallback(
+    async (skill: ManagedSkill) => {
+      const seen = new Set<string>()
+      for (const target of skill.targets) {
+        const scope = target.scope === 'project' ? 'project' : 'global'
+        const projectPath = target.project_path ?? undefined
+        const key = `${target.tool}|${scope}|${projectPath ?? ''}`
+        if (seen.has(key)) continue
+        seen.add(key)
+
+        if (scope === 'global' && !installedToolIds.includes(target.tool)) continue
+        if (scope === 'project') {
+          if (!projectPath) continue
+          if (!toolSupportsProjectScope(target.tool)) continue
+        }
+
+        await invokeTauri('sync_skill_to_tool', {
+          sourcePath: skill.central_path,
+          skillId: skill.id,
+          tool: target.tool,
+          name: skill.name,
+          overwriteIfSameContent: true,
+          scope,
+          ...(scope === 'project' ? { projectPath } : {}),
+        })
+      }
+    },
+    [installedToolIds, invokeTauri, toolSupportsProjectScope],
+  )
+
+  const handleToggleSkillEnabled = useCallback(
+    async (skill: ManagedSkill) => {
+      const nextEnabled = skill.enabled === false
+      setLoading(true)
+      setLoadingStartAt(Date.now())
+      setError(null)
+      setActionMessage(
+        nextEnabled
+          ? t('bulk.enableProgress', { current: 1, total: 1, name: skill.name })
+          : t('bulk.disableProgress', { current: 1, total: 1, name: skill.name }),
+      )
+      try {
+        await invokeTauri('set_skill_enabled', {
+          skillId: skill.id,
+          enabled: nextEnabled,
+        })
+        if (nextEnabled) {
+          await restoreSkillSavedTargets(skill)
+        }
+        await loadManagedSkills()
+        setSuccessToastMessage(
+          nextEnabled
+            ? t('skillEnabled', { name: skill.name })
+            : t('skillDisabled', { name: skill.name }),
+        )
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setLoading(false)
+        setLoadingStartAt(null)
+        setActionMessage(null)
+      }
+    },
+    [invokeTauri, loadManagedSkills, restoreSkillSavedTargets, t],
+  )
+
+  const handleToggleBulkEnabled = useCallback(async () => {
+    if (bulkSelectedSkills.length === 0) return
+    const nextEnabled = bulkShouldEnable
+    const affectedSkills = bulkSelectedSkills.filter(
+      (skill) => (skill.enabled !== false) !== nextEnabled,
+    )
+    if (affectedSkills.length === 0) return
+
+    const errors: { title: string; message: string }[] = []
+    setLoading(true)
+    setLoadingStartAt(Date.now())
+    setError(null)
+    try {
+      for (let index = 0; index < affectedSkills.length; index++) {
+        const skill = affectedSkills[index]
+        setActionMessage(
+          nextEnabled
+            ? t('bulk.enableProgress', {
+                current: index + 1,
+                total: affectedSkills.length,
+                name: skill.name,
+              })
+            : t('bulk.disableProgress', {
+                current: index + 1,
+                total: affectedSkills.length,
+                name: skill.name,
+              }),
+        )
+        try {
+          await invokeTauri('set_skill_enabled', {
+            skillId: skill.id,
+            enabled: nextEnabled,
+          })
+          if (nextEnabled) {
+            await restoreSkillSavedTargets(skill)
+          }
+        } catch (err) {
+          errors.push({
+            title: nextEnabled
+              ? t('bulk.enableFailedTitle', { name: skill.name })
+              : t('bulk.disableFailedTitle', { name: skill.name }),
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+      await loadManagedSkills()
+      if (errors.length > 0) {
+        showActionErrors(errors)
+      } else {
+        setBulkSelectedIds([])
+        setBulkMode(false)
+        setSuccessToastMessage(
+          nextEnabled
+            ? t('bulk.enableSuccess', { count: affectedSkills.length })
+            : t('bulk.disableSuccess', { count: affectedSkills.length }),
+        )
+      }
+    } finally {
+      setLoading(false)
+      setLoadingStartAt(null)
+      setActionMessage(null)
+    }
+  }, [
+    bulkSelectedSkills,
+    bulkShouldEnable,
+    invokeTauri,
+    loadManagedSkills,
+    restoreSkillSavedTargets,
+    showActionErrors,
+    t,
+  ])
+
+  const handleConfirmBulkSync = useCallback(async () => {
+    if (bulkSelectedSkills.length === 0) return
+
+    const errors: { title: string; message: string }[] = []
+    setLoading(true)
+    setLoadingStartAt(Date.now())
+    setError(null)
+    try {
+      let completed = 0
+      const selectedBaseToolSet = new Set(bulkSyncToolIds)
+      const total = Math.max(1, bulkSelectedSkills.length * installedToolIds.length)
+      for (const skill of bulkSelectedSkills) {
+        const skillScope = getSkillScope(skill)
+        const projects = getSkillProjects(skill)
+        const sharedByToolId =
+          skillScope === 'project'
+            ? sharedProjectToolIdsByToolId
+            : sharedToolIdsByToolId
+        const selectedToolSet = new Set<string>()
+        for (const toolId of selectedBaseToolSet) {
+          const shared = sharedByToolId[toolId] ?? [toolId]
+          for (const id of shared) selectedToolSet.add(id)
+        }
+
+        const activeInstalledToolIds =
+          skillScope === 'project' ? installedProjectToolIds : installedToolIds
+
+        const targetsToRemove = skill.targets.filter(
+          (target) =>
+            (target.scope ?? 'global') === skillScope &&
+            activeInstalledToolIds.includes(target.tool) &&
+            !selectedToolSet.has(target.tool),
+        )
+
+        const seenRemoveKeys = new Set<string>()
+        for (const target of targetsToRemove) {
+          const key = `${target.tool}|${target.scope}|${target.project_path ?? ''}`
+          if (seenRemoveKeys.has(key)) continue
+          seenRemoveKeys.add(key)
+          completed += 1
+          const toolLabel = toolLabelById[target.tool] ?? target.tool
+          setActionMessage(
+            t('bulk.unsyncProgress', {
+              current: Math.min(completed, total),
+              total,
+              name: skill.name,
+              tool: toolLabel,
+            }),
+          )
+          try {
+            await invokeTauri('unsync_skill_from_tool', {
+              skillId: skill.id,
+              tool: target.tool,
+              scope: skillScope,
+              projectPath: target.project_path ?? undefined,
+            })
+          } catch (err) {
+            errors.push({
+              title: t('errors.syncFailedTitle', {
+                name: skill.name,
+                tool: toolLabel,
+              }),
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+
+        for (const toolId of Array.from(selectedToolSet).filter((id) =>
+          activeInstalledToolIds.includes(id),
+        )) {
+          completed += 1
+          const toolLabel = toolLabelById[toolId] ?? toolId
+          setActionMessage(
+            t('bulk.syncProgress', {
+              current: Math.min(completed, total),
+              total,
+              name: skill.name,
+              tool: toolLabel,
+            }),
+          )
+          try {
+            if (skillScope === 'project') {
+              if (!toolSupportsProjectScope(toolId)) {
+                throw new Error(t('projectSync.unsupportedTool', { tool: toolLabel }))
+              }
+              if (projects.length === 0) {
+                throw new Error(t('projectSync.noProjectsForSync'))
+              }
+              for (const projectPath of projects) {
+                await invokeTauri('sync_skill_to_tool', {
+                  sourcePath: skill.central_path,
+                  skillId: skill.id,
+                  tool: toolId,
+                  name: skill.name,
+                  overwriteIfSameContent: true,
+                  scope: 'project',
+                  projectPath,
+                })
+              }
+            } else {
+              await invokeTauri('sync_skill_to_tool', {
+                sourcePath: skill.central_path,
+                skillId: skill.id,
+                tool: toolId,
+                name: skill.name,
+                overwriteIfSameContent: true,
+                scope: 'global',
+              })
+            }
+          } catch (err) {
+            errors.push({
+              title: t('errors.syncFailedTitle', {
+                name: skill.name,
+                tool: toolLabel,
+              }),
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
+        }
+      }
+      await loadManagedSkills()
+      setShowBulkSyncModal(false)
+      setBulkSyncToolIds([])
+      if (errors.length > 0) {
+        showActionErrors(errors)
+      } else {
+        setBulkSelectedIds([])
+        setBulkMode(false)
+        setSuccessToastMessage(
+          t('bulk.syncSuccess', {
+            count: bulkSelectedSkills.length,
+            tools: bulkSyncToolIds.length,
+          }),
+        )
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+      setLoadingStartAt(null)
+      setActionMessage(null)
+    }
+  }, [
+    bulkSelectedSkills,
+    bulkSyncToolIds,
+    getSkillProjects,
+    getSkillScope,
+    installedProjectToolIds,
+    installedToolIds,
+    invokeTauri,
+    loadManagedSkills,
+    sharedProjectToolIdsByToolId,
+    sharedToolIdsByToolId,
+    showActionErrors,
+    t,
+    toolLabelById,
+    toolSupportsProjectScope,
+  ])
+
+  const handleConfirmBulkDelete = useCallback(async () => {
+    if (bulkSelectedSkills.length === 0) return
+
+    const errors: { title: string; message: string }[] = []
+    setLoading(true)
+    setLoadingStartAt(Date.now())
+    setError(null)
+    try {
+      for (let index = 0; index < bulkSelectedSkills.length; index++) {
+        const skill = bulkSelectedSkills[index]
+        setActionMessage(
+          t('bulk.deleteProgress', {
+            current: index + 1,
+            total: bulkSelectedSkills.length,
+            name: skill.name,
+          }),
+        )
+        try {
+          await invokeTauri('delete_managed_skill', { skillId: skill.id })
+        } catch (err) {
+          errors.push({
+            title: skill.name,
+            message: err instanceof Error ? err.message : String(err),
+          })
+        }
+      }
+      await loadManagedSkills()
+      await loadTags()
+      setShowBulkDeleteModal(false)
+      if (errors.length > 0) {
+        showActionErrors(errors)
+      } else {
+        setBulkSelectedIds([])
+        setBulkMode(false)
+        setSuccessToastMessage(
+          t('bulk.deleteSuccess', { count: bulkSelectedSkills.length }),
+        )
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+      setLoadingStartAt(null)
+      setActionMessage(null)
+    }
+  }, [
+    bulkSelectedSkills,
+    invokeTauri,
+    loadManagedSkills,
+    loadTags,
+    showActionErrors,
+    t,
+  ])
 
   const handleCreateTag = useCallback(
     async (name: string) => {
@@ -1049,9 +2044,19 @@ function App() {
 
   const handleSyncTargetChange = useCallback(
     (toolId: string, checked: boolean) => {
-      const shared = sharedToolIdsByToolId[toolId] ?? [toolId]
-      if (shared.length > 1) {
-        const others = shared.filter((id) => id !== toolId)
+      const sharedByToolId =
+        installScope === 'project'
+          ? sharedProjectToolIdsByToolId
+          : sharedToolIdsByToolId
+      const shared = sharedByToolId[toolId] ?? [toolId]
+      const affected =
+        installScope === 'project'
+          ? shared.filter(
+              (id) => isInstalled(id) && toolSupportsProjectScope(id),
+            )
+          : shared
+      if (affected.length > 1) {
+        const others = affected.filter((id) => id !== toolId)
         const otherLabels = others.map((id) => toolLabelById[id] ?? id).join(', ')
         const ok = window.confirm(
           t('sharedDirConfirm', {
@@ -1063,11 +2068,91 @@ function App() {
       }
       setSyncTargets((prev) => {
         const next = { ...prev }
-        for (const id of shared) next[id] = checked
+        for (const id of affected) next[id] = checked
+        if (installScope === 'project') {
+          for (const id of shared) {
+            if (!toolSupportsProjectScope(id)) next[id] = false
+          }
+        }
         return next
       })
     },
-    [sharedToolIdsByToolId, t, toolLabelById],
+    [
+      installScope,
+      isInstalled,
+      sharedProjectToolIdsByToolId,
+      sharedToolIdsByToolId,
+      t,
+      toolLabelById,
+      toolSupportsProjectScope,
+    ],
+  )
+
+  const handleInstallScopeChange = useCallback(
+    (nextScope: InstallScope) => {
+      setInstallScope(nextScope)
+      if (nextScope === 'project') {
+        setSyncTargets((current) => {
+          const filtered = filterTargetsForScope(
+            current,
+            installedTools,
+            nextScope,
+          )
+          return normalizeProjectSharedTargets(
+            filtered,
+            installedTools,
+            sharedProjectToolIdsByToolId,
+          )
+        })
+      }
+    },
+    [installedTools, sharedProjectToolIdsByToolId],
+  )
+
+  const handleInstallProjectsChange = useCallback(
+    async (nextProjects: SetStateAction<string[]>) => {
+      const normalizedProjects = resolveProjectPathsUpdate(
+        installProjectsRef.current,
+        nextProjects,
+      )
+      const addedProjects = getAddedProjectPaths(
+        installProjectsRef.current,
+        normalizedProjects,
+      )
+      installProjectsRef.current = normalizedProjects
+      setInstallProjects(normalizedProjects)
+      if (addedProjects.length === 0) return
+
+      const saveSequence = installProjectsSaveSequenceRef.current + 1
+      installProjectsSaveSequenceRef.current = saveSequence
+      try {
+        let savedProjects: string[] | null = null
+        for (const projectPath of addedProjects) {
+          savedProjects = await invokeTauri<string[]>('save_recent_project', {
+            projectPath,
+          })
+        }
+        if (
+          savedProjects &&
+          isLatestSaveBatch(
+            saveSequence,
+            installProjectsSaveSequenceRef.current,
+          )
+        ) {
+          setRecentProjects(savedProjects)
+        }
+      } catch (err) {
+        if (
+          isLatestSaveBatch(
+            saveSequence,
+            installProjectsSaveSequenceRef.current,
+          )
+        ) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      }
+    },
+    [invokeTauri],
   )
 
   const handleDeletePrompt = useCallback((skillId: string) => {
@@ -1303,54 +2388,14 @@ function App() {
           },
         )
         await applySelectedAddModalTags(created.skill_id, created.name)
-        {
-          const selectedInstalledIds = tools
-            .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-            .map((t) => t.id)
-          const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-            .map((id) => tools.find((t) => t.id === id))
-            .filter(Boolean) as ToolOption[]
-          if (targets.length === 0) {
-            setError(t('errors.noSyncTargets'))
-          } else {
-            const collectedErrors: { title: string; message: string }[] = []
-            for (let i = 0; i < targets.length; i++) {
-              const tool = targets[i]
-              setActionMessage(
-                t('actions.syncStep', {
-                  index: i + 1,
-                  total: targets.length,
-                  name: created.name,
-                  tool: tool.label,
-                }),
-              )
-              try {
-                await invokeTauri('sync_skill_to_tool', {
-                  sourcePath: created.central_path,
-                  skillId: created.skill_id,
-                  tool: tool.id,
-                  name: created.name,
-                  overwriteIfSameContent: true,
-                })
-              } catch (err) {
-                const raw = err instanceof Error ? err.message : String(err)
-                collectedErrors.push({
-                  title: t('errors.syncFailedTitle', {
-                    name: created.name,
-                    tool: tool.label,
-                  }),
-                  message: raw,
-                })
-              }
-            }
-            if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-          }
-        }
+        const syncErrors = await syncInstalledSkill(created)
+        if (syncErrors.length > 0) showActionErrors(syncErrors)
         setLocalPath('')
         setLocalName('')
         setActionMessage(t('status.localSkillCreated'))
         setSuccessToastMessage(t('status.localSkillCreated'))
         setActionMessage(null)
+        resetInstallScope()
         setShowAddModal(false)
         await loadManagedSkills()
         await loadTags()
@@ -1360,6 +2405,7 @@ function App() {
         setLocalCandidateSelected(
           Object.fromEntries(candidates.map((c) => [c.subpath, c.valid])),
         )
+        setShowAddModal(false)
         setShowLocalPickModal(true)
         setActionMessage(null)
         setLoading(false)
@@ -1401,6 +2447,7 @@ function App() {
           setGitCandidateSelected(
             Object.fromEntries(candidates.map((c) => [c.subpath, true])),
           )
+          setShowAddModal(false)
           setShowGitPickModal(true)
           setActionMessage(null)
           setLoading(false)
@@ -1420,49 +2467,8 @@ function App() {
           },
         )
         await applySelectedAddModalTags(created.skill_id, created.name)
-        {
-          const selectedInstalledIds = tools
-            .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-            .map((t) => t.id)
-          const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-            .map((id) => tools.find((t) => t.id === id))
-            .filter(Boolean) as ToolOption[]
-          if (targets.length === 0) {
-            setError(t('errors.noSyncTargets'))
-          } else {
-            const collectedErrors: { title: string; message: string }[] = []
-            for (let i = 0; i < targets.length; i++) {
-              const tool = targets[i]
-              setActionMessage(
-                t('actions.syncStep', {
-                  index: i + 1,
-                  total: targets.length,
-                  name: created.name,
-                  tool: tool.label,
-                }),
-              )
-              try {
-                await invokeTauri('sync_skill_to_tool', {
-                  sourcePath: created.central_path,
-                  skillId: created.skill_id,
-                  tool: tool.id,
-                  name: created.name,
-                  overwriteIfSameContent: true,
-                })
-              } catch (err) {
-                const raw = err instanceof Error ? err.message : String(err)
-              collectedErrors.push({
-                title: t('errors.syncFailedTitle', {
-                  name: created.name,
-                  tool: tool.label,
-                }),
-                message: raw,
-              })
-              }
-            }
-            if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-          }
-        }
+        const syncErrors = await syncInstalledSkill(created)
+        if (syncErrors.length > 0) showActionErrors(syncErrors)
       } else {
         const candidates = await invokeTauri<GitSkillCandidate[]>(
           'list_git_skills_cmd',
@@ -1485,49 +2491,8 @@ function App() {
             },
           )
           await applySelectedAddModalTags(created.skill_id, created.name)
-          {
-            const selectedInstalledIds = tools
-              .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-              .map((t) => t.id)
-            const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-              .map((id) => tools.find((t) => t.id === id))
-              .filter(Boolean) as ToolOption[]
-            if (targets.length === 0) {
-              setError(t('errors.noSyncTargets'))
-            } else {
-              const collectedErrors: { title: string; message: string }[] = []
-              for (let i = 0; i < targets.length; i++) {
-                const tool = targets[i]
-                setActionMessage(
-                  t('actions.syncStep', {
-                    index: i + 1,
-                    total: targets.length,
-                    name: created.name,
-                    tool: tool.label,
-                  }),
-                )
-                try {
-                  await invokeTauri('sync_skill_to_tool', {
-                    sourcePath: created.central_path,
-                    skillId: created.skill_id,
-                    tool: tool.id,
-                    name: created.name,
-                    overwriteIfSameContent: true,
-                  })
-                } catch (err) {
-                  const raw = err instanceof Error ? err.message : String(err)
-                  collectedErrors.push({
-                    title: t('errors.syncFailedTitle', {
-                      name: created.name,
-                      tool: tool.label,
-                    }),
-                    message: raw,
-                  })
-                }
-              }
-              if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-            }
-          }
+          const syncErrors = await syncInstalledSkill(created)
+          if (syncErrors.length > 0) showActionErrors(syncErrors)
         } else if (autoSelectSkillName) {
           // Auto-select the matching skill from online search results.
           // skills.sh name may differ from SKILL.md name (e.g. "json-render-react" vs "react"),
@@ -1555,49 +2520,8 @@ function App() {
               },
             )
             await applySelectedAddModalTags(created.skill_id, created.name)
-            {
-              const selectedInstalledIds = tools
-                .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-                .map((t) => t.id)
-              const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-                .map((id) => tools.find((t) => t.id === id))
-                .filter(Boolean) as ToolOption[]
-              if (targets.length === 0) {
-                setError(t('errors.noSyncTargets'))
-              } else {
-                const collectedErrors: { title: string; message: string }[] = []
-                for (let i = 0; i < targets.length; i++) {
-                  const tool = targets[i]
-                  setActionMessage(
-                    t('actions.syncStep', {
-                      index: i + 1,
-                      total: targets.length,
-                      name: created.name,
-                      tool: tool.label,
-                    }),
-                  )
-                  try {
-                    await invokeTauri('sync_skill_to_tool', {
-                      sourcePath: created.central_path,
-                      skillId: created.skill_id,
-                      tool: tool.id,
-                      name: created.name,
-                      overwriteIfSameContent: true,
-                    })
-                  } catch (err) {
-                    const raw = err instanceof Error ? err.message : String(err)
-                    collectedErrors.push({
-                      title: t('errors.syncFailedTitle', {
-                        name: created.name,
-                        tool: tool.label,
-                      }),
-                      message: raw,
-                    })
-                  }
-                }
-                if (collectedErrors.length > 0) showActionErrors(collectedErrors)
-              }
-            }
+            const syncErrors = await syncInstalledSkill(created)
+            if (syncErrors.length > 0) showActionErrors(syncErrors)
           } else {
             // No match found, fall back to picker
             setGitCandidatesRepoUrl(url)
@@ -1605,6 +2529,7 @@ function App() {
             setGitCandidateSelected(
               Object.fromEntries(candidates.map((c) => [c.subpath, true])),
             )
+            setShowAddModal(false)
             setShowGitPickModal(true)
             setActionMessage(null)
             setLoading(false)
@@ -1617,6 +2542,7 @@ function App() {
           setGitCandidateSelected(
             Object.fromEntries(candidates.map((c) => [c.subpath, true])),
           )
+          setShowAddModal(false)
           setShowGitPickModal(true)
           setActionMessage(null)
           setLoading(false)
@@ -1629,6 +2555,7 @@ function App() {
       setActionMessage(t('status.gitSkillCreated'))
       setSuccessToastMessage(t('status.gitSkillCreated'))
       setActionMessage(null)
+      resetInstallScope()
       setShowAddModal(false)
       await loadManagedSkills()
       await loadTags()
@@ -1645,6 +2572,7 @@ function App() {
 
   const handleExploreInstall = useCallback(
     (sourceUrl: string, skillName?: string) => {
+      resetInstallScope()
       setGitUrl(sourceUrl)
       if (skillName) setAutoSelectSkillName(skillName)
       if (toolStatus) {
@@ -1657,7 +2585,7 @@ function App() {
       exploreInstallUrlRef.current = sourceUrl
       setExploreInstallTrigger((n) => n + 1)
     },
-    [toolStatus],
+    [resetInstallScope, toolStatus],
   )
 
   useEffect(() => {
@@ -1730,50 +2658,8 @@ function App() {
             },
           )
           await applySelectedAddModalTags(created.skill_id, created.name)
-          {
-            const selectedInstalledIds = tools
-              .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-              .map((t) => t.id)
-            const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-              .map((id) => tools.find((t) => t.id === id))
-              .filter(Boolean) as ToolOption[]
-            if (targets.length === 0) {
-              collectedErrors.push({
-                title: t('errors.unsyncedTitle', { name: created.name }),
-                message: t('errors.noSyncTargets'),
-              })
-            } else {
-              for (let ti = 0; ti < targets.length; ti++) {
-                const tool = targets[ti]
-                setActionMessage(
-                  t('actions.syncStep', {
-                    index: ti + 1,
-                    total: targets.length,
-                    name: created.name,
-                    tool: tool.label,
-                  }),
-                )
-                try {
-                  await invokeTauri('sync_skill_to_tool', {
-                    sourcePath: created.central_path,
-                    skillId: created.skill_id,
-                    tool: tool.id,
-                    name: created.name,
-                    overwriteIfSameContent: true,
-                  })
-                } catch (err) {
-                  const raw = err instanceof Error ? err.message : String(err)
-                  collectedErrors.push({
-                    title: t('errors.syncFailedTitle', {
-                      name: created.name,
-                      tool: tool.label,
-                    }),
-                    message: raw,
-                  })
-                }
-              }
-            }
-          }
+          const syncErrors = await syncInstalledSkill(created)
+          collectedErrors.push(...syncErrors)
         } catch (err) {
           const raw = err instanceof Error ? err.message : String(err)
           collectedErrors.push({
@@ -1792,6 +2678,7 @@ function App() {
       setActionMessage(t('status.selectedSkillsInstalled'))
       setSuccessToastMessage(t('status.selectedSkillsInstalled'))
       setActionMessage(null)
+      resetInstallScope()
       setShowAddModal(false)
       await loadManagedSkills()
       await loadTags()
@@ -1842,50 +2729,8 @@ function App() {
             },
           )
           await applySelectedAddModalTags(created.skill_id, created.name)
-          {
-            const selectedInstalledIds = tools
-              .filter((tool) => syncTargets[tool.id] && isInstalled(tool.id))
-              .map((t) => t.id)
-            const targets = uniqueToolIdsBySkillsDir(selectedInstalledIds)
-              .map((id) => tools.find((t) => t.id === id))
-              .filter(Boolean) as ToolOption[]
-            if (targets.length === 0) {
-              collectedErrors.push({
-                title: t('errors.unsyncedTitle', { name: created.name }),
-                message: t('errors.noSyncTargets'),
-              })
-            } else {
-              for (let ti = 0; ti < targets.length; ti++) {
-                const tool = targets[ti]
-                setActionMessage(
-                  t('actions.syncStep', {
-                    index: ti + 1,
-                    total: targets.length,
-                    name: created.name,
-                    tool: tool.label,
-                  }),
-                )
-                try {
-                  await invokeTauri('sync_skill_to_tool', {
-                    sourcePath: created.central_path,
-                    skillId: created.skill_id,
-                    tool: tool.id,
-                    name: created.name,
-                    overwriteIfSameContent: true,
-                  })
-                } catch (err) {
-                  const raw = err instanceof Error ? err.message : String(err)
-                  collectedErrors.push({
-                    title: t('errors.syncFailedTitle', {
-                      name: created.name,
-                      tool: tool.label,
-                    }),
-                    message: raw,
-                  })
-                }
-              }
-            }
-          }
+          const syncErrors = await syncInstalledSkill(created)
+          collectedErrors.push(...syncErrors)
         } catch (err) {
           const raw = err instanceof Error ? err.message : String(err)
           collectedErrors.push({
@@ -1908,6 +2753,7 @@ function App() {
       setGitCandidates([])
       setGitCandidateSelected({})
       setGitCandidatesRepoUrl('')
+      resetInstallScope()
       setShowAddModal(false)
       await loadManagedSkills()
       await loadTags()
@@ -2189,7 +3035,6 @@ function App() {
   )
 
   const handlePickProject = useCallback(async () => {
-    if (!scopeModalSkill) return undefined
     try {
       if (!isTauri) throw new Error(t('errors.notTauri'))
       const { open } = await import('@tauri-apps/plugin-dialog')
@@ -2204,11 +3049,15 @@ function App() {
       setError(err instanceof Error ? err.message : String(err))
       return undefined
     }
-  }, [isTauri, scopeModalSkill, t])
+  }, [isTauri, t])
 
   const runToggleToolForSkill = useCallback(
     async (skill: ManagedSkill, toolId: string) => {
       if (loading) return
+      if (skill.enabled === false) {
+        toast.error(t('bulk.enableBeforeSync'))
+        return
+      }
       const toolLabel = tools.find((t) => t.id === toolId)?.label ?? toolId
       const skillScope = getSkillScope(skill)
       const projects = getSkillProjects(skill)
@@ -2224,7 +3073,10 @@ function App() {
         }
       }
       const matchingTargets = skill.targets.filter(
-        (target) => target.tool === toolId && (target.scope ?? 'global') === skillScope,
+        (target) =>
+          target.tool === toolId &&
+          (target.scope ?? 'global') === skillScope &&
+          target.status !== 'disabled',
       )
       const synced = matchingTargets.length > 0
 
@@ -2452,6 +3304,8 @@ function App() {
               includeUntagged={includeUntagged}
               untaggedCount={untaggedCount}
               totalCount={visibleSkills.length}
+              bulkMode={bulkMode}
+              bulkSelectedCount={bulkSelectedIds.length}
               onSortChange={handleSortChange}
               onSearchChange={handleSearchChange}
               onScopeFilterChange={handleScopeFilterChange}
@@ -2459,6 +3313,7 @@ function App() {
               onToggleUntagged={handleToggleUntaggedFilter}
               onClearTags={handleClearTagFilters}
               onManageTags={handleOpenTagsPage}
+              onToggleBulkMode={handleToggleBulkMode}
               t={t}
             />
             <SkillsList
@@ -2466,35 +3321,152 @@ function App() {
               visibleSkills={visibleSkills}
               installedTools={installedTools}
               loading={loading}
+              bulkMode={bulkMode}
+              selectedSkillIds={bulkSelectedIds}
               getGithubInfo={getGithubInfo}
               getSkillSourceLabel={getSkillSourceLabel}
               formatRelative={formatRelative}
               onReviewImport={handleReviewImport}
               onUpdateSkill={handleUpdateSkill}
               onDeleteSkill={handleDeletePrompt}
+              onToggleSkillEnabled={handleToggleSkillEnabled}
               onToggleTool={handleToggleToolForSkill}
               onOpenScope={handleOpenScope}
               onOpenDetail={handleOpenDetail}
               onEditTags={handleOpenEditTags}
+              onToggleBulkSelection={handleToggleBulkSelection}
               getSkillScope={getSkillScope}
               getSkillProjects={getSkillProjects}
               t={t}
             />
+            {bulkMode ? (
+              <div className="bulk-action-bar">
+                <div className="bulk-action-copy">
+                  <strong>{t('bulk.selected', { count: bulkSelectedIds.length })}</strong>
+                  <span>{t('bulk.helper')}</span>
+                </div>
+                <div className="bulk-action-buttons">
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={handleSelectVisibleSkills}
+                    disabled={loading || visibleSkills.length === 0}
+                  >
+                    {allVisibleBulkSelected
+                      ? t('bulk.unselectVisible')
+                      : t('bulk.selectVisible')}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={handleOpenBulkTags}
+                    disabled={loading || bulkSelectedIds.length === 0}
+                  >
+                    {t('bulk.tags')}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={handleOpenBulkSync}
+                    disabled={
+                      loading ||
+                      bulkSelectedIds.length === 0 ||
+                      bulkHasDisabledSelected
+                    }
+                  >
+                    {t('bulk.sync')}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => void handleToggleBulkEnabled()}
+                    disabled={loading || bulkSelectedIds.length === 0}
+                  >
+                    {bulkShouldEnable ? t('bulk.enable') : t('bulk.disable')}
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    type="button"
+                    onClick={handleOpenBulkDelete}
+                    disabled={loading || bulkSelectedIds.length === 0}
+                  >
+                    {t('bulk.delete')}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
-        ) : activeView === 'tags' ? (
-          <TagsPage
-            tags={tags}
-            untaggedCount={untaggedCount}
-            loading={loading}
-            formatRelative={formatRelative}
-            onBack={handleBackToList}
-            onReviewUntagged={handleReviewUntagged}
-            onViewTag={handleViewTag}
-            onCreateTag={handleCreateTag}
-            onRenameTag={handleRenameTag}
-            onDeleteTag={handleDeleteTag}
-            t={t}
-          />
+        ) : activeView === 'manage' ? (
+          <div className="management-page">
+            <div className="management-header">
+              <div className="management-heading">
+                <h1>{t('manageCenterTitle')}</h1>
+                <p>{t('manageCenterHelp')}</p>
+              </div>
+              <div className="management-tab-list" role="tablist" aria-label={t('manageCenterTitle')}>
+                <button
+                  className={`management-tab${managementTab === 'tags' ? ' active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={managementTab === 'tags'}
+                  onClick={() => setManagementTab('tags')}
+                >
+                  {t('manageTabs.tags')}
+                </button>
+                <button
+                  className={`management-tab${managementTab === 'tools' ? ' active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={managementTab === 'tools'}
+                  onClick={() => setManagementTab('tools')}
+                >
+                  {t('manageTabs.tools')}
+                </button>
+                <button
+                  className={`management-tab${managementTab === 'updates' ? ' active' : ''}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={managementTab === 'updates'}
+                  onClick={() => setManagementTab('updates')}
+                >
+                  {t('manageTabs.updates')}
+                </button>
+              </div>
+            </div>
+            <div className="management-panel">
+              {managementTab === 'tags' ? (
+                <TagsPage
+                  embedded
+                  tags={tags}
+                  untaggedCount={untaggedCount}
+                  loading={loading}
+                  formatRelative={formatRelative}
+                  onReviewUntagged={handleReviewUntagged}
+                  onViewTag={handleViewTag}
+                  onCreateTag={handleCreateTag}
+                  onRenameTag={handleRenameTag}
+                  onDeleteTag={handleDeleteTag}
+                  t={t}
+                />
+              ) : managementTab === 'tools' ? (
+                <ToolsPage
+                  embedded
+                  toolStatus={toolStatus}
+                  toolConfig={toolConfig}
+                  onToolConfigChange={handleToolConfigChange}
+                  t={t}
+                />
+              ) : (
+                <UpdatesPage
+                  autoUpdateConfig={autoUpdateConfig}
+                  onAutoUpdateConfigChange={handleAutoUpdateConfigChange}
+                  onRunAutoUpdateNow={handleTriggerAutoUpdateTaskNow}
+                  autoUpdateTriggering={autoUpdateTriggering}
+                  t={t}
+                />
+              )}
+            </div>
+          </div>
         ) : activeView === 'settings' ? (
           <SettingsPage
             isTauri={isTauri}
@@ -2511,6 +3483,8 @@ function App() {
             onClearGitCacheNow={handleClearGitCacheNow}
             githubToken={githubToken}
             onGithubTokenChange={handleGithubTokenChange}
+            githubProxyConfig={githubProxyConfig}
+            onGithubProxyConfigChange={handleGithubProxyConfigChange}
             onBack={handleCloseSettings}
             t={t}
           />
@@ -2545,6 +3519,9 @@ function App() {
         syncTargets={syncTargets}
         installedTools={installedTools}
         toolStatus={toolStatus}
+        installScope={installScope}
+        installProjects={installProjects}
+        recentProjects={recentProjects}
         onRequestClose={handleCloseAdd}
         onTabChange={setAddModalTab}
         onLocalPathChange={setLocalPath}
@@ -2554,6 +3531,9 @@ function App() {
         onGitNameChange={setGitName}
         onToggleTag={handleToggleAddModalTag}
         onSyncTargetChange={handleSyncTargetChange}
+        onInstallScopeChange={handleInstallScopeChange}
+        onInstallProjectsChange={handleInstallProjectsChange}
+        onPickProject={handlePickProject}
         onSubmit={addModalTab === 'local' ? handleCreateLocal : handleCreateGit}
         t={t}
       />
@@ -2574,6 +3554,37 @@ function App() {
         tags={tags}
         onRequestClose={handleCloseEditTags}
         onSave={handleSaveSkillTags}
+        t={t}
+      />
+
+      <BulkSyncModal
+        open={showBulkSyncModal}
+        loading={loading}
+        selectedCount={bulkSelectedIds.length}
+        installedTools={installedTools}
+        selectedToolIds={bulkSyncToolIds}
+        onToggleTool={handleToggleBulkSyncTool}
+        onRequestClose={handleCloseBulkSync}
+        onConfirm={handleConfirmBulkSync}
+        t={t}
+      />
+
+      <BulkTagsModal
+        open={showBulkTagsModal}
+        loading={loading}
+        selectedSkills={bulkSelectedSkills}
+        tags={tags}
+        onRequestClose={handleCloseBulkTags}
+        onConfirm={handleConfirmBulkTags}
+        t={t}
+      />
+
+      <BulkDeleteModal
+        open={showBulkDeleteModal}
+        loading={loading}
+        skillNames={bulkSelectedNames}
+        onRequestClose={handleCloseBulkDelete}
+        onConfirm={handleConfirmBulkDelete}
         t={t}
       />
 

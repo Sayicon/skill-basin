@@ -1,9 +1,16 @@
 use anyhow::Context;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use std::sync::Arc;
 
+use crate::core::auto_update::{
+    get_auto_update_config as get_auto_update_config_core, record_auto_update_triggered,
+    run_auto_update_now as run_auto_update_now_core,
+    set_auto_update_config as set_auto_update_config_core, AutoUpdateConfig,
+    AutoUpdateIntervalUnit, AutoUpdateProgressSnapshot, AutoUpdateRunResult, AutoUpdateSchedule,
+    AutoUpdateScheduleType,
+};
 use crate::core::cache_cleanup::{
     cleanup_git_cache_dirs, get_git_cache_cleanup_days as get_git_cache_cleanup_days_core,
     get_git_cache_ttl_secs as get_git_cache_ttl_secs_core,
@@ -20,6 +27,12 @@ use crate::core::installer::{
     install_local_skill_from_selection, list_git_skills, list_local_skills,
     update_managed_skill_from_source, GitSkillCandidate, InstallResult, LocalSkillCandidate,
 };
+use crate::core::network_proxy::{
+    get_github_proxy_config as get_github_proxy_config_core,
+    get_github_proxy_url as get_github_proxy_url_core,
+    set_github_proxy_config as set_github_proxy_config_core,
+    set_github_proxy_url as set_github_proxy_url_core, GithubProxyConfig,
+};
 use crate::core::onboarding::{build_onboarding_plan, OnboardingPlan};
 use crate::core::skill_store::{SkillStore, SkillTargetRecord};
 use crate::core::skills_search::{
@@ -28,9 +41,14 @@ use crate::core::skills_search::{
 use crate::core::sync_engine::{
     copy_dir_recursive, sync_dir_for_tool_with_overwrite, sync_dir_hybrid, SyncMode,
 };
+use crate::core::system_scheduler::{
+    current_scheduler_config, get_auto_update_task_status, install_auto_update_task,
+    trigger_auto_update_task_now, uninstall_auto_update_task,
+};
 use crate::core::tool_adapters::{
-    adapter_by_key, adapters_sharing_project_skills_dir, is_tool_installed, resolve_default_path,
-    resolve_project_path, supports_project_scope,
+    adapter_by_key, adapters_sharing_project_skills_dir, is_builtin_tool_enabled,
+    is_tool_installed, load_tool_config, project_relative_skills_dir, resolve_default_path,
+    save_tool_config, supports_project_scope, CustomToolConfig, ToolConfig,
 };
 use uuid::Uuid;
 
@@ -110,7 +128,10 @@ pub struct ToolInfoDto {
     pub key: String,
     pub label: String,
     pub installed: bool,
+    pub enabled: bool,
+    pub is_custom: bool,
     pub skills_dir: String,
+    pub project_skills_dir: String,
     pub supports_project_scope: bool,
 }
 
@@ -121,27 +142,198 @@ pub struct ToolStatusDto {
     pub newly_installed: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+struct RuntimeTool {
+    key: String,
+    label: String,
+    installed: bool,
+    enabled: bool,
+    is_custom: bool,
+    skills_dir: std::path::PathBuf,
+    project_skills_dir: String,
+    supports_project_scope: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolConfigDto {
+    pub disabled_builtin_tools: Vec<String>,
+    pub custom_tools: Vec<CustomToolConfigDto>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CustomToolConfigDto {
+    pub key: String,
+    pub label: String,
+    pub skills_dir: String,
+    pub project_skills_dir: Option<String>,
+    pub enabled: bool,
+}
+
+impl From<ToolConfig> for ToolConfigDto {
+    fn from(config: ToolConfig) -> Self {
+        Self {
+            disabled_builtin_tools: config.disabled_builtin_tools,
+            custom_tools: config
+                .custom_tools
+                .into_iter()
+                .map(|tool| CustomToolConfigDto {
+                    key: tool.key,
+                    label: tool.label,
+                    skills_dir: tool.skills_dir,
+                    project_skills_dir: tool.project_skills_dir,
+                    enabled: tool.enabled,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<ToolConfigDto> for ToolConfig {
+    fn from(config: ToolConfigDto) -> Self {
+        Self {
+            disabled_builtin_tools: config.disabled_builtin_tools,
+            custom_tools: config
+                .custom_tools
+                .into_iter()
+                .map(|tool| CustomToolConfig {
+                    key: tool.key,
+                    label: tool.label,
+                    skills_dir: tool.skills_dir,
+                    project_skills_dir: tool.project_skills_dir,
+                    enabled: tool.enabled,
+                })
+                .collect(),
+        }
+    }
+}
+
+fn runtime_tools(store: &SkillStore, include_disabled: bool) -> anyhow::Result<Vec<RuntimeTool>> {
+    let config = load_tool_config(store)?;
+    let mut tools = Vec::new();
+
+    for adapter in crate::core::tool_adapters::default_tool_adapters() {
+        let enabled = is_builtin_tool_enabled(&config, adapter.id.as_key());
+        if !include_disabled && !enabled {
+            continue;
+        }
+        let detected = is_tool_installed(&adapter)?;
+        tools.push(RuntimeTool {
+            key: adapter.id.as_key().to_string(),
+            label: adapter.display_name.to_string(),
+            installed: enabled && detected,
+            enabled,
+            is_custom: false,
+            skills_dir: resolve_default_path(&adapter)?,
+            project_skills_dir: project_relative_skills_dir(&adapter).to_string(),
+            supports_project_scope: supports_project_scope(&adapter),
+        });
+    }
+
+    for custom in config.custom_tools {
+        if !include_disabled && !custom.enabled {
+            continue;
+        }
+        let skills_dir = expand_home_path(&custom.skills_dir)?;
+        let supports_project_scope = custom.project_skills_dir.is_some();
+        let detected = skills_dir.is_dir();
+        tools.push(RuntimeTool {
+            key: custom.key,
+            label: custom.label,
+            installed: custom.enabled && detected,
+            enabled: custom.enabled,
+            is_custom: true,
+            skills_dir,
+            project_skills_dir: custom.project_skills_dir.unwrap_or_default(),
+            supports_project_scope,
+        });
+    }
+
+    Ok(tools)
+}
+
+fn runtime_tool_by_key(store: &SkillStore, key: &str) -> anyhow::Result<RuntimeTool> {
+    runtime_tools(store, false)?
+        .into_iter()
+        .find(|tool| tool.key == key)
+        .ok_or_else(|| anyhow::anyhow!("TOOL_NOT_INSTALLED|{}", key))
+}
+
+fn runtime_tools_sharing_dir(
+    store: &SkillStore,
+    selected: &RuntimeTool,
+    scope: &str,
+) -> anyhow::Result<Vec<RuntimeTool>> {
+    let tools = runtime_tools(store, false)?;
+    let shared = tools
+        .into_iter()
+        .filter(|tool| {
+            tool.installed
+                && if scope == "project" {
+                    tool.project_skills_dir == selected.project_skills_dir
+                } else {
+                    tool.skills_dir == selected.skills_dir
+                }
+        })
+        .collect::<Vec<_>>();
+    Ok(shared)
+}
+
+fn resolve_runtime_tool_root(
+    tool: &RuntimeTool,
+    project_root: Option<&std::path::Path>,
+) -> anyhow::Result<std::path::PathBuf> {
+    if let Some(project_root) = project_root {
+        if !tool.supports_project_scope {
+            anyhow::bail!("PROJECT_SCOPE_UNSUPPORTED|{}", tool.key);
+        }
+        return Ok(project_root.join(&tool.project_skills_dir));
+    }
+    Ok(tool.skills_dir.clone())
+}
+
+#[tauri::command]
+pub async fn get_tool_config(store: State<'_, SkillStore>) -> Result<ToolConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || load_tool_config(&store).map(ToolConfigDto::from))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn set_tool_config(
+    store: State<'_, SkillStore>,
+    config: ToolConfigDto,
+) -> Result<ToolConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        save_tool_config(&store, config.into()).map(ToolConfigDto::from)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
 #[tauri::command]
 pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusDto, String> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let adapters = crate::core::tool_adapters::default_tool_adapters();
         let mut tools: Vec<ToolInfoDto> = Vec::new();
         let mut installed: Vec<String> = Vec::new();
 
-        for adapter in &adapters {
-            let ok = is_tool_installed(adapter)?;
-            let key = adapter.id.as_key().to_string();
-            let skills_dir = resolve_default_path(adapter)?.to_string_lossy().to_string();
+        for tool in runtime_tools(&store, true)? {
             tools.push(ToolInfoDto {
-                key: key.clone(),
-                label: adapter.display_name.to_string(),
-                installed: ok,
-                skills_dir,
-                supports_project_scope: supports_project_scope(adapter),
+                key: tool.key.clone(),
+                label: tool.label,
+                installed: tool.installed,
+                enabled: tool.enabled,
+                is_custom: tool.is_custom,
+                skills_dir: tool.skills_dir.to_string_lossy().to_string(),
+                project_skills_dir: tool.project_skills_dir,
+                supports_project_scope: tool.supports_project_scope,
             });
-            if ok {
-                installed.push(key);
+            if tool.installed {
+                installed.push(tool.key);
             }
         }
 
@@ -242,6 +434,191 @@ pub async fn set_git_cache_ttl_secs(
         .await
         .map_err(|err| err.to_string())?
         .map_err(format_anyhow_error)
+}
+
+#[derive(Debug, Serialize)]
+pub struct AutoUpdateConfigDto {
+    pub enabled: bool,
+    pub interval_hours: i64,
+    pub schedule_type: String,
+    pub interval_value: i64,
+    pub interval_unit: String,
+    pub daily_time: String,
+    pub local_skill_count: usize,
+    pub protected_local_skill_count: usize,
+    pub task_registered: bool,
+    pub task_status_detail: String,
+    pub last_run_at: Option<i64>,
+    pub last_started_at: Option<i64>,
+    pub last_finished_at: Option<i64>,
+    pub last_status: Option<String>,
+    pub last_error: Option<String>,
+    pub last_checked: usize,
+    pub last_updated: usize,
+    pub last_failed: usize,
+    pub progress: AutoUpdateProgressSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AutoUpdateRunResultDto {
+    pub checked: usize,
+    pub updated: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+    pub progress: AutoUpdateProgressSnapshot,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GithubProxyConfigDto {
+    pub enabled: bool,
+    pub port: u16,
+    pub url: String,
+    pub auto_detected: bool,
+}
+
+#[tauri::command]
+pub async fn get_auto_update_config(
+    store: State<'_, SkillStore>,
+) -> Result<AutoUpdateConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        get_auto_update_config_core(&store).map(to_auto_update_config_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_auto_update_config(
+    store: State<'_, SkillStore>,
+    enabled: bool,
+    intervalHours: i64,
+    scheduleType: Option<String>,
+    intervalValue: Option<i64>,
+    intervalUnit: Option<String>,
+    dailyTime: Option<String>,
+) -> Result<AutoUpdateConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let schedule = build_auto_update_schedule(
+            intervalHours,
+            scheduleType.as_deref(),
+            intervalValue,
+            intervalUnit.as_deref(),
+            dailyTime.as_deref(),
+        )?;
+        if enabled {
+            let scheduler_config = current_scheduler_config(schedule.clone())?;
+            install_auto_update_task(&scheduler_config)?;
+        } else {
+            uninstall_auto_update_task()?;
+        }
+
+        let existing = get_auto_update_config_core(&store)?;
+        let saved = set_auto_update_config_core(
+            &store,
+            AutoUpdateConfig {
+                enabled,
+                interval_hours: intervalHours,
+                schedule,
+                local_skill_count: existing.local_skill_count,
+                protected_local_skill_count: existing.protected_local_skill_count,
+                last_run_at: existing.last_run_at,
+                last_started_at: existing.last_started_at,
+                last_finished_at: existing.last_finished_at,
+                last_status: existing.last_status,
+                last_error: existing.last_error,
+                last_checked: existing.last_checked,
+                last_updated: existing.last_updated,
+                last_failed: existing.last_failed,
+                progress: existing.progress,
+            },
+        )?;
+        Ok::<_, anyhow::Error>(to_auto_update_config_dto(saved))
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+fn build_auto_update_schedule(
+    legacy_interval_hours: i64,
+    schedule_type: Option<&str>,
+    interval_value: Option<i64>,
+    interval_unit: Option<&str>,
+    daily_time: Option<&str>,
+) -> anyhow::Result<AutoUpdateSchedule> {
+    let schedule_type = match schedule_type.unwrap_or("interval") {
+        "daily" => AutoUpdateScheduleType::Daily,
+        "interval" => AutoUpdateScheduleType::Interval,
+        other => anyhow::bail!("unsupported auto update schedule type: {other}"),
+    };
+    let interval_unit = match interval_unit.unwrap_or("hours") {
+        "minutes" => AutoUpdateIntervalUnit::Minutes,
+        "hours" => AutoUpdateIntervalUnit::Hours,
+        other => anyhow::bail!("unsupported auto update interval unit: {other}"),
+    };
+    let schedule = AutoUpdateSchedule {
+        schedule_type,
+        interval_value: interval_value.unwrap_or(legacy_interval_hours),
+        interval_unit,
+        daily_time: daily_time.unwrap_or("03:00").to_string(),
+    };
+    match schedule.schedule_type {
+        AutoUpdateScheduleType::Interval => {
+            let minutes = schedule.interval_minutes();
+            if !(15..=24 * 30 * 60).contains(&minutes) {
+                anyhow::bail!("interval minutes must be between 15 and 43200");
+            }
+        }
+        AutoUpdateScheduleType::Daily => {
+            let Some((hour, minute)) = schedule.daily_time.split_once(':') else {
+                anyhow::bail!("daily time must use HH:mm format");
+            };
+            if hour.len() != 2 || minute.len() != 2 {
+                anyhow::bail!("daily time must use HH:mm format");
+            }
+            let hour = hour.parse::<u8>().context("parse daily schedule hour")?;
+            let minute = minute
+                .parse::<u8>()
+                .context("parse daily schedule minute")?;
+            if hour > 23 || minute > 59 {
+                anyhow::bail!("daily time must use HH:mm format");
+            }
+        }
+    }
+    Ok(schedule)
+}
+
+#[tauri::command]
+pub async fn run_auto_update_now(
+    app: tauri::AppHandle,
+    store: State<'_, SkillStore>,
+) -> Result<AutoUpdateRunResultDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        run_auto_update_now_core(&app, &store).map(to_auto_update_run_result_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn trigger_auto_update_task_now_cmd(store: State<'_, SkillStore>) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let config = get_auto_update_config_core(&store)?;
+        let scheduler_config = current_scheduler_config(config.schedule)?;
+        install_auto_update_task(&scheduler_config)?;
+        record_auto_update_triggered(&store)?;
+        trigger_auto_update_task_now()
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
 }
 
 #[derive(Debug, Serialize)]
@@ -551,10 +928,10 @@ pub async fn sync_skill_to_tool(
 ) -> Result<SyncResultDto, String> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let adapter = adapter_by_key(&tool).ok_or_else(|| anyhow::anyhow!("unknown tool"))?;
+        let runtime_tool = runtime_tool_by_key(&store, &tool)?;
         let scope = normalize_scope(scope.as_deref())?;
-        if scope == "project" && !supports_project_scope(&adapter) {
-            anyhow::bail!("PROJECT_SCOPE_UNSUPPORTED|{}", adapter.id.as_key());
+        if scope == "project" && !runtime_tool.supports_project_scope {
+            anyhow::bail!("PROJECT_SCOPE_UNSUPPORTED|{}", runtime_tool.key);
         }
         let project_root = if scope == "project" {
             let raw = projectPath
@@ -569,20 +946,16 @@ pub async fn sync_skill_to_tool(
             None
         };
 
-        if scope == "global" && !is_tool_installed(&adapter)? {
-            anyhow::bail!("TOOL_NOT_INSTALLED|{}", adapter.id.as_key());
+        if scope == "global" && !runtime_tool.installed {
+            anyhow::bail!("TOOL_NOT_INSTALLED|{}", runtime_tool.key);
         }
-        let tool_root = if let Some(project_root) = &project_root {
-            resolve_project_path(&adapter, project_root)?
-        } else {
-            resolve_default_path(&adapter)?
-        };
+        let tool_root = resolve_runtime_tool_root(&runtime_tool, project_root.as_deref())?;
         // Pre-check: ensure the skills directory is writable (fixes #20 — Windows OS error 5).
         if let Err(err) = std::fs::create_dir_all(&tool_root) {
             if err.kind() == std::io::ErrorKind::PermissionDenied {
                 anyhow::bail!(
                     "TOOL_NOT_WRITABLE|{}|{}",
-                    adapter.display_name,
+                    runtime_tool.label,
                     tool_root.to_string_lossy()
                 );
             }
@@ -595,7 +968,10 @@ pub async fn sync_skill_to_tool(
         if let Some(existing) =
             store.get_skill_target(&skillId, &tool, scope, project_path_for_record.as_deref())?
         {
-            if existing.target_path == target.to_string_lossy() && target.exists() {
+            if existing.status != "disabled"
+                && existing.target_path == target.to_string_lossy()
+                && target.exists()
+            {
                 return Ok::<_, anyhow::Error>(SyncResultDto {
                     mode_used: existing.mode,
                     target_path: existing.target_path,
@@ -617,7 +993,7 @@ pub async fn sync_skill_to_tool(
                     {
                         anyhow::anyhow!(
                             "TOOL_NOT_WRITABLE|{}|{}",
-                            adapter.display_name,
+                            runtime_tool.label,
                             tool_root.to_string_lossy()
                         )
                     } else {
@@ -626,19 +1002,12 @@ pub async fn sync_skill_to_tool(
                 })?;
 
         // Some tools share the same skills directory; keep DB records consistent across them.
-        let group = if scope == "project" {
-            adapters_sharing_project_skills_dir(&adapter)
-        } else {
-            crate::core::tool_adapters::adapters_sharing_skills_dir(&adapter)
-        };
+        let group = runtime_tools_sharing_dir(&store, &runtime_tool, scope)?;
         for a in group {
-            if !is_tool_installed(&a)? {
-                continue;
-            }
             let record = SkillTargetRecord {
                 id: Uuid::new_v4().to_string(),
                 skill_id: skillId.clone(),
-                tool: a.id.as_key().to_string(),
+                tool: a.key,
                 scope: scope.to_string(),
                 project_path: project_path_for_record.clone(),
                 target_path: result.target_path.to_string_lossy().to_string(),
@@ -704,32 +1073,38 @@ pub async fn unsync_skill_from_tool(
         };
 
         // Some tools share the same skills directory; unsync should update all of them.
-        let group_tool_keys: Vec<String> = if let Some(adapter) = adapter_by_key(&tool) {
-            let group = if scope == "project" {
-                adapters_sharing_project_skills_dir(&adapter)
-            } else {
-                crate::core::tool_adapters::adapters_sharing_skills_dir(&adapter)
-            };
-            // If none of the group tools are installed, do nothing (treat as already not effective).
-            if scope == "global" {
-                let mut any_installed = false;
-                for a in &group {
-                    if is_tool_installed(a)? {
-                        any_installed = true;
-                        break;
+        let group_tool_keys: Vec<String> =
+            if let Ok(runtime_tool) = runtime_tool_by_key(&store, &tool) {
+                runtime_tools_sharing_dir(&store, &runtime_tool, scope)?
+                    .into_iter()
+                    .map(|tool| tool.key)
+                    .collect()
+            } else if let Some(adapter) = adapter_by_key(&tool) {
+                let group = if scope == "project" {
+                    adapters_sharing_project_skills_dir(&adapter)
+                } else {
+                    crate::core::tool_adapters::adapters_sharing_skills_dir(&adapter)
+                };
+                // If none of the group tools are installed, do nothing (treat as already not effective).
+                if scope == "global" {
+                    let mut any_installed = false;
+                    for a in &group {
+                        if is_tool_installed(a)? {
+                            any_installed = true;
+                            break;
+                        }
+                    }
+                    if !any_installed {
+                        return Ok::<_, anyhow::Error>(());
                     }
                 }
-                if !any_installed {
-                    return Ok::<_, anyhow::Error>(());
-                }
-            }
-            group
-                .into_iter()
-                .map(|a| a.id.as_key().to_string())
-                .collect()
-        } else {
-            vec![tool.clone()]
-        };
+                group
+                    .into_iter()
+                    .map(|a| a.id.as_key().to_string())
+                    .collect()
+            } else {
+                vec![tool.clone()]
+            };
 
         // Remove filesystem target once (shared dir => shared target path).
         let mut removed = false;
@@ -745,6 +1120,50 @@ pub async fn unsync_skill_from_tool(
             }
         }
 
+        Ok::<_, anyhow::Error>(())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_skill_enabled(
+    store: State<'_, SkillStore>,
+    skillId: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if !enabled {
+            let targets = store.list_skill_targets(&skillId)?;
+            let mut remove_failures: Vec<String> = Vec::new();
+            for target in targets {
+                if target.status != "disabled" {
+                    if let Err(err) = remove_path_any(&target.target_path) {
+                        remove_failures.push(format!("{}: {}", target.target_path, err));
+                    }
+                }
+                store.update_skill_target_status(
+                    &skillId,
+                    &target.tool,
+                    &target.scope,
+                    target.project_path.as_deref(),
+                    "disabled",
+                )?;
+            }
+            store.set_skill_enabled(&skillId, false)?;
+            if !remove_failures.is_empty() {
+                anyhow::bail!(
+                    "已停用 Skill，但清理部分工具目录失败：\n- {}",
+                    remove_failures.join("\n- ")
+                );
+            }
+            return Ok::<_, anyhow::Error>(());
+        }
+
+        store.set_skill_enabled(&skillId, true)?;
         Ok::<_, anyhow::Error>(())
     })
     .await
@@ -794,12 +1213,13 @@ pub async fn search_github(
     let limit = limit.unwrap_or(10) as usize;
     tauri::async_runtime::spawn_blocking(move || {
         let token = store.get_setting("github_token")?.unwrap_or_default();
+        let proxy_url = get_github_proxy_url_core(&store)?;
         let token_opt = if token.is_empty() {
             None
         } else {
             Some(token.as_str())
         };
-        search_github_repos(&query, limit, token_opt)
+        search_github_repos(&query, limit, token_opt, &proxy_url)
     })
     .await
     .map_err(|err| err.to_string())?
@@ -832,6 +1252,57 @@ pub async fn set_github_token(store: State<'_, SkillStore>, token: String) -> Re
     .await
     .map_err(|err| err.to_string())?
     .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn get_github_proxy_config(
+    store: State<'_, SkillStore>,
+) -> Result<GithubProxyConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        get_github_proxy_config_core(&store).map(to_github_proxy_config_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_github_proxy_config(
+    store: State<'_, SkillStore>,
+    enabled: bool,
+    port: u16,
+) -> Result<GithubProxyConfigDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        set_github_proxy_config_core(&store, enabled, port).map(to_github_proxy_config_dto)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+pub async fn get_github_proxy_url(store: State<'_, SkillStore>) -> Result<String, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || get_github_proxy_url_core(&store))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn set_github_proxy_url(
+    store: State<'_, SkillStore>,
+    proxyUrl: String,
+) -> Result<String, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || set_github_proxy_url_core(&store, &proxyUrl))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
 }
 
 #[tauri::command]
@@ -869,6 +1340,7 @@ pub struct ManagedSkillDto {
     pub created_at: i64,
     pub updated_at: i64,
     pub last_sync_at: Option<i64>,
+    pub enabled: bool,
     pub status: String,
     pub tags: Vec<TagDto>,
     pub targets: Vec<SkillTargetDto>,
@@ -1069,6 +1541,61 @@ fn to_install_dto(result: InstallResult) -> InstallResultDto {
     }
 }
 
+fn to_auto_update_config_dto(mut config: AutoUpdateConfig) -> AutoUpdateConfigDto {
+    let task_status = get_auto_update_task_status();
+    if config.last_status.as_deref() == Some("running")
+        && task_status.detail.contains("state = not running")
+    {
+        config.last_status = Some("stopped".to_string());
+    }
+    AutoUpdateConfigDto {
+        enabled: config.enabled,
+        interval_hours: config.interval_hours,
+        schedule_type: match config.schedule.schedule_type {
+            AutoUpdateScheduleType::Interval => "interval".to_string(),
+            AutoUpdateScheduleType::Daily => "daily".to_string(),
+        },
+        interval_value: config.schedule.interval_value,
+        interval_unit: match config.schedule.interval_unit {
+            AutoUpdateIntervalUnit::Minutes => "minutes".to_string(),
+            AutoUpdateIntervalUnit::Hours => "hours".to_string(),
+        },
+        daily_time: config.schedule.daily_time,
+        local_skill_count: config.local_skill_count,
+        protected_local_skill_count: config.protected_local_skill_count,
+        task_registered: task_status.registered,
+        task_status_detail: task_status.detail,
+        last_run_at: config.last_run_at,
+        last_started_at: config.last_started_at,
+        last_finished_at: config.last_finished_at,
+        last_status: config.last_status,
+        last_error: config.last_error,
+        last_checked: config.last_checked,
+        last_updated: config.last_updated,
+        last_failed: config.last_failed,
+        progress: config.progress,
+    }
+}
+
+fn to_auto_update_run_result_dto(result: AutoUpdateRunResult) -> AutoUpdateRunResultDto {
+    AutoUpdateRunResultDto {
+        checked: result.checked,
+        updated: result.updated,
+        failed: result.failed,
+        errors: result.errors,
+        progress: result.progress,
+    }
+}
+
+fn to_github_proxy_config_dto(config: GithubProxyConfig) -> GithubProxyConfigDto {
+    GithubProxyConfigDto {
+        enabled: config.enabled,
+        port: config.port,
+        url: config.url,
+        auto_detected: config.auto_detected,
+    }
+}
+
 fn now_ms() -> i64 {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
@@ -1115,6 +1642,7 @@ fn get_managed_skills_impl(store: &SkillStore) -> Result<Vec<ManagedSkillDto>, S
                 created_at: skill.created_at,
                 updated_at: skill.updated_at,
                 last_sync_at: skill.last_sync_at,
+                enabled: skill.enabled,
                 status: skill.status,
                 tags,
                 targets,

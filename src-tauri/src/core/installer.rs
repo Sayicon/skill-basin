@@ -11,7 +11,10 @@ use super::cancel_token::CancelToken;
 use super::central_repo::{ensure_central_repo, resolve_central_repo_path};
 use super::content_hash::hash_dir;
 use super::git_fetcher::{clone_or_pull, clone_or_pull_sparse};
-use super::github_download::{download_github_directory, parse_github_api_params};
+use super::github_download::{
+    download_github_directory, parse_github_api_params, GithubDownloadOptions,
+};
+use super::network_proxy::get_github_proxy_url;
 use super::skill_store::{SkillRecord, SkillStore};
 use super::sync_engine::copy_dir_recursive;
 use super::sync_engine::sync_dir_copy_with_overwrite;
@@ -71,6 +74,7 @@ pub fn install_local_skill<R: tauri::Runtime>(
         updated_at: now,
         last_sync_at: None,
         last_seen_at: now,
+        enabled: true,
         status: "ok".to_string(),
     };
 
@@ -126,6 +130,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
     } else {
         Some(github_token.as_str())
     };
+    let github_proxy_url = get_github_proxy_url(store)?;
     let revision;
     if let Some((owner, repo, branch, subpath)) = parse_github_api_params(
         &parsed.clone_url,
@@ -173,8 +178,11 @@ pub fn install_git_skill<R: tauri::Runtime>(
                     &branch,
                     &subpath,
                     &central_path,
-                    cancel,
-                    github_token_opt,
+                    GithubDownloadOptions {
+                        cancel,
+                        token: github_token_opt,
+                        proxy_url: &github_proxy_url,
+                    },
                 ) {
                     Ok(()) => {
                         revision = format!("api-download-{}", branch);
@@ -288,6 +296,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
         updated_at: now,
         last_sync_at: None,
         last_seen_at: now,
+        enabled: true,
         status: "ok".to_string(),
     };
 
@@ -783,6 +792,7 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
         updated_at: now,
         last_sync_at: record.last_sync_at,
         last_seen_at: now,
+        enabled: record.enabled,
         status: "ok".to_string(),
     };
     store.upsert_skill(&updated)?;
@@ -792,6 +802,9 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
     let targets = store.list_skill_targets(skill_id)?;
     let mut updated_targets: Vec<String> = Vec::new();
     for t in targets {
+        if t.status == "disabled" {
+            continue;
+        }
         // Project scoped targets live under a project root and do not require global tool install detection.
         if t.scope == "global" {
             if let Some(adapter) = adapter_by_key(&t.tool) {
@@ -1038,6 +1051,105 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
         }
     }
 
+    // Also scan root-level directories for skills (matching collect_skill_dirs behavior).
+    // This handles the case where the user selects a directory that directly contains
+    // skill subdirectories (e.g. a "skills" directory with article-writer/SKILL.md).
+    if let Ok(rd) = std::fs::read_dir(base_path) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let dir_name = entry.file_name();
+            let dir_name = dir_name.to_string_lossy();
+            if is_hidden_dir_name(&dir_name) || is_known_root_scan_dir(&dir_name) {
+                continue;
+            }
+            let rel = p
+                .strip_prefix(base_path)
+                .unwrap_or(&p)
+                .to_string_lossy()
+                .to_string();
+            if p.join("SKILL.md").exists() {
+                match parse_skill_md_with_reason(&p.join("SKILL.md")) {
+                    Ok((name, desc)) => {
+                        out.push(LocalSkillCandidate {
+                            name,
+                            description: desc,
+                            subpath: rel,
+                            valid: true,
+                            reason: None,
+                        });
+                    }
+                    Err(reason) => {
+                        out.push(LocalSkillCandidate {
+                            name: dir_name.to_string(),
+                            description: None,
+                            subpath: rel,
+                            valid: false,
+                            reason: Some(reason.to_string()),
+                        });
+                    }
+                }
+            } else if is_skill_container_dir_name(&dir_name) {
+                // Scan children of skill container directories.
+                if let Ok(sub_rd) = std::fs::read_dir(&p) {
+                    for sub_entry in sub_rd.flatten() {
+                        let sub_p = sub_entry.path();
+                        if !sub_p.is_dir() {
+                            continue;
+                        }
+                        let sub_rel = sub_p
+                            .strip_prefix(base_path)
+                            .unwrap_or(&sub_p)
+                            .to_string_lossy()
+                            .to_string();
+                        if sub_p.join("SKILL.md").exists() {
+                            match parse_skill_md_with_reason(&sub_p.join("SKILL.md")) {
+                                Ok((name, desc)) => {
+                                    out.push(LocalSkillCandidate {
+                                        name,
+                                        description: desc,
+                                        subpath: sub_rel,
+                                        valid: true,
+                                        reason: None,
+                                    });
+                                }
+                                Err(reason) => {
+                                    out.push(LocalSkillCandidate {
+                                        name: sub_entry.file_name().to_string_lossy().to_string(),
+                                        description: None,
+                                        subpath: sub_rel,
+                                        valid: false,
+                                        reason: Some(reason.to_string()),
+                                    });
+                                }
+                            }
+                        } else if is_claude_skill_dir(&sub_p) {
+                            let name = sub_entry.file_name().to_string_lossy().to_string();
+                            let desc = read_plugin_description(base_path);
+                            out.push(LocalSkillCandidate {
+                                name,
+                                description: desc,
+                                subpath: sub_rel,
+                                valid: true,
+                                reason: None,
+                            });
+                        } else {
+                            out.push(LocalSkillCandidate {
+                                name: sub_entry.file_name().to_string_lossy().to_string(),
+                                description: None,
+                                subpath: sub_rel,
+                                valid: false,
+                                reason: Some("missing_skill_md".to_string()),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     out.sort_by(|a, b| a.name.cmp(&b.name));
     out.dedup_by(|a, b| a.subpath == b.subpath);
 
@@ -1136,6 +1248,7 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
         updated_at: now,
         last_sync_at: None,
         last_seen_at: now,
+        enabled: true,
         status: "ok".to_string(),
     };
     store.upsert_skill(&record)?;
@@ -1238,14 +1351,15 @@ fn clone_to_cache<R: tauri::Runtime>(
         repo_dir
     );
 
-    let rev = match clone_or_pull(clone_url, &repo_dir, branch, cancel) {
+    let proxy_url = get_github_proxy_url(store)?;
+    let rev = match clone_or_pull(clone_url, &repo_dir, branch, cancel, Some(&proxy_url)) {
         Ok(rev) => rev,
         Err(err) => {
             // If cache got corrupted, retry once from a clean state.
             if repo_dir.exists() {
                 let _ = std::fs::remove_dir_all(&repo_dir);
             }
-            clone_or_pull(clone_url, &repo_dir, branch, cancel)
+            clone_or_pull(clone_url, &repo_dir, branch, cancel, Some(&proxy_url))
                 .with_context(|| format!("{:#}", err))?
         }
     };
@@ -1322,14 +1436,29 @@ fn clone_to_cache_subpath<R: tauri::Runtime>(
         repo_dir
     );
 
-    let rev = match clone_or_pull_sparse(clone_url, &repo_dir, branch, subpath, cancel) {
+    let proxy_url = get_github_proxy_url(store)?;
+    let rev = match clone_or_pull_sparse(
+        clone_url,
+        &repo_dir,
+        branch,
+        subpath,
+        cancel,
+        Some(&proxy_url),
+    ) {
         Ok(rev) => rev,
         Err(err) => {
             if repo_dir.exists() {
                 let _ = std::fs::remove_dir_all(&repo_dir);
             }
-            clone_or_pull_sparse(clone_url, &repo_dir, branch, subpath, cancel)
-                .with_context(|| format!("{:#}", err))?
+            clone_or_pull_sparse(
+                clone_url,
+                &repo_dir,
+                branch,
+                subpath,
+                cancel,
+                Some(&proxy_url),
+            )
+            .with_context(|| format!("{:#}", err))?
         }
     };
 

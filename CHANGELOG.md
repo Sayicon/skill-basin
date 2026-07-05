@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-05
+
+### Added
+- **Install scope selection**: Choose global or project-level sync before installing a skill, including batch installs from local folders and Git repositories.
+- **Bulk skill management**: Select multiple skills from My Skills and apply batch operations for tags, target tools, enable/disable, and delete.
+- **Skill enable/disable controls**: Temporarily disable a skill without deleting it, then re-enable it later with its previous tool sync settings restored.
+- **Management Center**: Manage tags, tool configuration, and Skills auto update from one dedicated area.
+- **Tool management**: Enable or disable built-in tool targets so unused tools no longer appear in skill cards, install flows, or sync actions.
+- **Custom tool directories**: Add custom tool targets with global skills directories and optional project-level skills directories.
+- **Scheduled Skills auto update**: Configure system-level background updates for managed skills, trigger an immediate update, and review run results in the Management Center.
+- **GitHub network proxy settings**: Configure a local proxy for GitHub API requests, featured skills, GitHub downloads, and Git update flows.
+
+### Changed
+- **Settings page organization**: Settings now focuses on application preferences such as interface language, appearance, storage, cache, GitHub access, network proxy, and app updates.
+- **Management UI layout**: Tags, tools, and update pages now share consistent workspace spacing and tab navigation.
+- **Bulk tool sync behavior**: Batch tool changes now apply the selected tool list as the final target state for the selected skills.
+- **Auto update results**: Update status, counts, failures, start time, finish time, and duration are now shown inline instead of relying on a separate progress dialog.
+- **Install modal layout**: The add-skill flow uses a compact install scope selector and keeps modal actions visible when candidate lists are long.
+
+### Fixed
+- **Local batch install review**: Fixed local skill directory batch installation and candidate selection edge cases.
+- **Project scope grouping**: Tools that share the same project skills directory are grouped by target directory so project sync remains consistent.
+- **Modal overlap**: Fixed cases where long modal content could overlap or hide footer actions.
+- **Scheduler lint stability**: Cleaned up platform-specific scheduler code paths so all Rust lint checks pass across targets.
+
 ## [0.6.3] - 2026-06-27
 
 ### Fixed

@@ -14,12 +14,13 @@ pub fn clone_or_pull(
     dest: &Path,
     branch: Option<&str>,
     cancel: Option<&CancelToken>,
+    proxy_url: Option<&str>,
 ) -> Result<String> {
     // Prefer the system `git` binary if available. It tends to work better on macOS
     // networks because it respects user git config (proxy/certs) and OS trust store.
     if let Some(git_bin) = resolve_git_bin() {
         let started = Instant::now();
-        match clone_or_pull_via_git_cli(repo_url, dest, branch, cancel) {
+        match clone_or_pull_via_git_cli(repo_url, dest, branch, cancel, proxy_url) {
             Ok(head) => {
                 log::info!(
                     "[git_fetcher] git-cli ok (bin={}) {}s url={}",
@@ -30,6 +31,12 @@ pub fn clone_or_pull(
                 return Ok(head);
             }
             Err(err) => {
+                if proxy_url.is_some_and(|v| !v.trim().is_empty()) {
+                    anyhow::bail!(
+                        "git 命令执行失败。已配置 GitHub 代理，为确保访问一定走代理，已停止并不回退到内置 git。\n{:#}",
+                        err
+                    );
+                }
                 let allow_fallback = std::env::var("SKILLS_HUB_ALLOW_LIBGIT2_FALLBACK")
                     .ok()
                     .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -96,6 +103,7 @@ pub fn clone_or_pull_sparse(
     branch: Option<&str>,
     subpath: &str,
     cancel: Option<&CancelToken>,
+    proxy_url: Option<&str>,
 ) -> Result<String> {
     let clean_subpath = subpath.trim_matches('/');
     if clean_subpath.is_empty() {
@@ -124,7 +132,7 @@ pub fn clone_or_pull_sparse(
 
         let out = run_cmd_with_timeout(
             {
-                let mut cmd = git_cmd();
+                let mut cmd = git_cmd(proxy_url);
                 cmd.arg("-C").arg(dest).args([
                     "sparse-checkout",
                     "set",
@@ -146,7 +154,7 @@ pub fn clone_or_pull_sparse(
 
         let out = run_cmd_with_timeout(
             {
-                let mut cmd = git_cmd();
+                let mut cmd = git_cmd(proxy_url);
                 cmd.arg("-C").arg(dest).args(["fetch", "--prune", "origin"]);
                 cmd
             },
@@ -161,7 +169,7 @@ pub fn clone_or_pull_sparse(
         if let Some(branch) = branch {
             let out = run_cmd_with_timeout(
                 {
-                    let mut cmd = git_cmd();
+                    let mut cmd = git_cmd(proxy_url);
                     cmd.arg("-C").arg(dest).args([
                         "checkout",
                         "-B",
@@ -183,7 +191,7 @@ pub fn clone_or_pull_sparse(
         } else {
             let out = run_cmd_with_timeout(
                 {
-                    let mut cmd = git_cmd();
+                    let mut cmd = git_cmd(proxy_url);
                     cmd.arg("-C")
                         .arg(dest)
                         .args(["reset", "--hard", "FETCH_HEAD"]);
@@ -201,7 +209,7 @@ pub fn clone_or_pull_sparse(
             }
         }
     } else {
-        let mut cmd = git_cmd();
+        let mut cmd = git_cmd(proxy_url);
         cmd.arg("clone").args([
             "--depth",
             "1",
@@ -225,7 +233,7 @@ pub fn clone_or_pull_sparse(
 
         let out = run_cmd_with_timeout(
             {
-                let mut cmd = git_cmd();
+                let mut cmd = git_cmd(proxy_url);
                 cmd.arg("-C").arg(dest).args([
                     "sparse-checkout",
                     "set",
@@ -248,7 +256,7 @@ pub fn clone_or_pull_sparse(
 
     let out = run_cmd_with_timeout(
         {
-            let mut cmd = git_cmd();
+            let mut cmd = git_cmd(proxy_url);
             cmd.arg("-C").arg(dest).args(["rev-parse", "HEAD"]);
             cmd
         },
@@ -332,9 +340,21 @@ fn git_bin_works(bin: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn git_cmd() -> Command {
+fn git_cmd(proxy_url: Option<&str>) -> Command {
     let bin = resolve_git_bin().unwrap_or_else(|| "git".to_string());
     let mut cmd = Command::new(bin);
+    if let Some(proxy_url) = proxy_url.map(str::trim).filter(|v| !v.is_empty()) {
+        cmd.arg("-c")
+            .arg(format!("http.proxy={}", proxy_url))
+            .arg("-c")
+            .arg(format!("https.proxy={}", proxy_url))
+            .env("http_proxy", proxy_url)
+            .env("https_proxy", proxy_url)
+            .env("all_proxy", proxy_url)
+            .env("HTTP_PROXY", proxy_url)
+            .env("HTTPS_PROXY", proxy_url)
+            .env("ALL_PROXY", proxy_url);
+    }
     // Never block on interactive auth prompts inside a GUI app.
     cmd.env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_ASKPASS", "echo");
@@ -389,6 +409,7 @@ fn clone_or_pull_via_git_cli(
     dest: &Path,
     branch: Option<&str>,
     cancel: Option<&CancelToken>,
+    proxy_url: Option<&str>,
 ) -> Result<String> {
     // Ensure parent exists so `git clone` can create dest.
     if let Some(parent) = dest.parent() {
@@ -410,7 +431,7 @@ fn clone_or_pull_via_git_cli(
         // Fetch updates.
         let out = run_cmd_with_timeout(
             {
-                let mut cmd = git_cmd();
+                let mut cmd = git_cmd(proxy_url);
                 cmd.arg("-C").arg(dest).args(["fetch", "--prune", "origin"]);
                 cmd
             },
@@ -426,7 +447,7 @@ fn clone_or_pull_via_git_cli(
         if let Some(branch) = branch {
             let out = run_cmd_with_timeout(
                 {
-                    let mut cmd = git_cmd();
+                    let mut cmd = git_cmd(proxy_url);
                     cmd.arg("-C").arg(dest).args([
                         "checkout",
                         "-B",
@@ -448,7 +469,7 @@ fn clone_or_pull_via_git_cli(
         } else {
             let out = run_cmd_with_timeout(
                 {
-                    let mut cmd = git_cmd();
+                    let mut cmd = git_cmd(proxy_url);
                     cmd.arg("-C")
                         .arg(dest)
                         .args(["reset", "--hard", "FETCH_HEAD"]);
@@ -467,7 +488,7 @@ fn clone_or_pull_via_git_cli(
         }
     } else {
         // Clone.
-        let mut cmd = git_cmd();
+        let mut cmd = git_cmd(proxy_url);
         cmd.arg("clone")
             .args(["--depth", "1", "--filter=blob:none", "--no-tags"]);
         if let Some(branch) = branch {
@@ -489,7 +510,7 @@ fn clone_or_pull_via_git_cli(
     if let Some(branch) = branch {
         let out = run_cmd_with_timeout(
             {
-                let mut cmd = git_cmd();
+                let mut cmd = git_cmd(proxy_url);
                 cmd.arg("-C").arg(dest).args(["checkout", branch]);
                 cmd
             },
@@ -510,7 +531,7 @@ fn clone_or_pull_via_git_cli(
     // Read HEAD revision.
     let out = run_cmd_with_timeout(
         {
-            let mut cmd = git_cmd();
+            let mut cmd = git_cmd(proxy_url);
             cmd.arg("-C").arg(dest).args(["rev-parse", "HEAD"]);
             cmd
         },

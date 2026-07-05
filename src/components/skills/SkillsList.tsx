@@ -14,16 +14,20 @@ type SkillsListProps = {
   visibleSkills: ManagedSkill[]
   installedTools: ToolOption[]
   loading: boolean
+  bulkMode: boolean
+  selectedSkillIds: string[]
   getGithubInfo: (url: string | null | undefined) => GithubInfo | null
   getSkillSourceLabel: (skill: ManagedSkill) => string
   formatRelative: (ms: number | null | undefined) => string
   onReviewImport: () => void
   onUpdateSkill: (skill: ManagedSkill) => void
   onDeleteSkill: (skillId: string) => void
+  onToggleSkillEnabled: (skill: ManagedSkill) => void
   onToggleTool: (skill: ManagedSkill, toolId: string) => void
   onOpenScope: (skill: ManagedSkill) => void
   onOpenDetail: (skill: ManagedSkill) => void
   onEditTags: (skill: ManagedSkill) => void
+  onToggleBulkSelection: (skillId: string) => void
   getSkillScope: (skill: ManagedSkill) => 'global' | 'project'
   getSkillProjects: (skill: ManagedSkill) => string[]
   t: TFunction
@@ -34,20 +38,26 @@ const SkillsList = ({
   visibleSkills,
   installedTools,
   loading,
+  bulkMode,
+  selectedSkillIds,
   getGithubInfo,
   getSkillSourceLabel,
   formatRelative,
   onReviewImport,
   onUpdateSkill,
   onDeleteSkill,
+  onToggleSkillEnabled,
   onToggleTool,
   onOpenScope,
   onOpenDetail,
   onEditTags,
+  onToggleBulkSelection,
   getSkillScope,
   getSkillProjects,
   t,
 }: SkillsListProps) => {
+  const selectedSkillSet = new Set(selectedSkillIds)
+
   return (
     <div className="skills-list">
       {plan && plan.total_skills_found > 0 ? (
@@ -84,15 +94,19 @@ const SkillsList = ({
               skill={skill}
               installedTools={installedTools}
               loading={loading}
+              bulkMode={bulkMode}
+              bulkSelected={selectedSkillSet.has(skill.id)}
               getGithubInfo={getGithubInfo}
               getSkillSourceLabel={getSkillSourceLabel}
               formatRelative={formatRelative}
               onUpdate={onUpdateSkill}
               onDelete={onDeleteSkill}
+              onToggleEnabled={onToggleSkillEnabled}
               onToggleTool={onToggleTool}
               onOpenScope={onOpenScope}
               onOpenDetail={onOpenDetail}
               onEditTags={onEditTags}
+              onToggleBulkSelection={onToggleBulkSelection}
               getSkillScope={getSkillScope}
               getSkillProjects={getSkillProjects}
               t={t}

@@ -1,5 +1,6 @@
 use std::fs;
 
+use super::git_cmd;
 use crate::core::git_fetcher::{clone_or_pull, clone_or_pull_sparse};
 
 fn commit_file(repo: &git2::Repository, path: &str, content: &[u8], msg: &str) -> git2::Oid {
@@ -40,6 +41,7 @@ fn clone_then_pull_updates_head() {
         &dest,
         None,
         None,
+        None,
     )
     .unwrap();
     assert_eq!(h1, c2.to_string(), "首次 clone 应指向最新提交");
@@ -48,6 +50,7 @@ fn clone_then_pull_updates_head() {
     let h2 = clone_or_pull(
         origin_dir.path().to_string_lossy().as_ref(),
         &dest,
+        None,
         None,
         None,
     )
@@ -71,6 +74,7 @@ fn sparse_clone_only_materializes_requested_subpath() {
         None,
         "skills/a",
         None,
+        None,
     ) {
         Ok(head) => head,
         Err(err) if format!("{:#}", err).contains("system git is required") => return,
@@ -82,5 +86,24 @@ fn sparse_clone_only_materializes_requested_subpath() {
     assert!(
         !dest.join("skills/b/SKILL.md").exists(),
         "未请求的子目录不应被检出到工作区"
+    );
+}
+
+#[test]
+fn git_command_injects_configured_proxy() {
+    let cmd = git_cmd(Some("http://127.0.0.1:7890"));
+    let args = cmd
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(args.contains(&"http.proxy=http://127.0.0.1:7890".to_string()));
+    assert!(args.contains(&"https.proxy=http://127.0.0.1:7890".to_string()));
+    assert_eq!(
+        cmd.get_envs()
+            .find(|(key, _)| key.to_string_lossy() == "https_proxy")
+            .and_then(|(_, value)| value)
+            .map(|value| value.to_string_lossy().to_string()),
+        Some("http://127.0.0.1:7890".to_string())
     );
 }

@@ -8,6 +8,14 @@ use core::skill_store::{default_db_path, migrate_legacy_db_if_needed, SkillStore
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
 
+fn init_store<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> anyhow::Result<SkillStore> {
+    let db_path = default_db_path(app)?;
+    migrate_legacy_db_if_needed(&db_path)?;
+    let store = SkillStore::new(db_path);
+    store.ensure_schema()?;
+    Ok(store)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -26,10 +34,45 @@ pub fn run() {
                     .build(),
             )?;
 
-            let db_path = default_db_path(app.handle()).map_err(tauri::Error::from)?;
-            migrate_legacy_db_if_needed(&db_path).map_err(tauri::Error::from)?;
-            let store = SkillStore::new(db_path);
-            store.ensure_schema().map_err(tauri::Error::from)?;
+            let is_background_update = std::env::args()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|pair| pair[0] == "--background-task" && pair[1] == "update-skills");
+            let force_background_update = std::env::args().any(|arg| arg == "--force");
+
+            let store = init_store(app.handle()).map_err(tauri::Error::from)?;
+
+            if is_background_update {
+                #[cfg(target_os = "macos")]
+                {
+                    app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
+                let run_result = if force_background_update {
+                    core::auto_update::run_auto_update_now(app.handle(), &store).map(Some)
+                } else {
+                    core::auto_update::run_due_auto_update(app.handle(), &store)
+                };
+                match run_result {
+                    Ok(Some(result)) => {
+                        log::info!(
+                            "auto update finished: checked={}, updated={}, failed={}",
+                            result.checked,
+                            result.updated,
+                            result.failed
+                        );
+                        app.handle().exit(if result.failed == 0 { 0 } else { 2 });
+                    }
+                    Ok(None) => {
+                        app.handle().exit(0);
+                    }
+                    Err(err) => {
+                        eprintln!("auto update failed: {err:#}");
+                        app.handle().exit(1);
+                    }
+                }
+                return Ok(());
+            }
+
             app.manage(store.clone());
             app.manage(Arc::new(CancelToken::new()));
 
@@ -73,12 +116,18 @@ pub fn run() {
             commands::set_central_repo_path,
             commands::get_recent_projects,
             commands::save_recent_project,
+            commands::get_tool_config,
+            commands::set_tool_config,
             commands::get_tool_status,
             commands::get_git_cache_cleanup_days,
             commands::get_git_cache_ttl_secs,
             commands::set_git_cache_cleanup_days,
             commands::set_git_cache_ttl_secs,
             commands::clear_git_cache_now,
+            commands::get_auto_update_config,
+            commands::set_auto_update_config,
+            commands::run_auto_update_now,
+            commands::trigger_auto_update_task_now_cmd,
             commands::get_onboarding_plan,
             commands::install_local,
             commands::list_local_skills_cmd,
@@ -89,10 +138,15 @@ pub fn run() {
             commands::sync_skill_dir,
             commands::sync_skill_to_tool,
             commands::unsync_skill_from_tool,
+            commands::set_skill_enabled,
             commands::update_managed_skill,
             commands::search_github,
             commands::get_github_token,
             commands::set_github_token,
+            commands::get_github_proxy_config,
+            commands::set_github_proxy_config,
+            commands::get_github_proxy_url,
+            commands::set_github_proxy_url,
             commands::import_existing_skill,
             commands::get_managed_skills,
             commands::get_tags,

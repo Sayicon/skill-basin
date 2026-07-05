@@ -8,7 +8,7 @@ const DB_FILE_NAME: &str = "skills_hub.db";
 const LEGACY_APP_IDENTIFIERS: &[&str] = &["com.tauri.dev", "com.tauri.dev.skillshub"];
 
 // Schema versioning: bump when making changes and add a migration step.
-const SCHEMA_VERSION: i32 = 5;
+const SCHEMA_VERSION: i32 = 6;
 
 // Minimal schema for MVP: skills, skill_targets, settings, discovered_skills(optional).
 const SCHEMA_V1: &str = r#"
@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS skills (
   updated_at INTEGER NOT NULL,
   last_sync_at INTEGER NULL,
   last_seen_at INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL
 );
 
@@ -100,6 +101,7 @@ pub struct SkillRecord {
     pub updated_at: i64,
     pub last_sync_at: Option<i64>,
     pub last_seen_at: i64,
+    pub enabled: bool,
     pub status: String,
 }
 
@@ -168,6 +170,9 @@ impl SkillStore {
                 if user_version < 5 {
                     migrate_tags_to_v5(conn)?;
                 }
+                if user_version < 6 {
+                    migrate_skill_enabled_to_v6(conn)?;
+                }
                 conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             } else if user_version > SCHEMA_VERSION {
                 anyhow::bail!(
@@ -216,10 +221,10 @@ impl SkillStore {
             conn.execute(
                 "INSERT INTO skills (
           id, name, description, source_type, source_ref, source_subpath, source_revision, central_path, content_hash,
-          created_at, updated_at, last_sync_at, last_seen_at, status
+          created_at, updated_at, last_sync_at, last_seen_at, enabled, status
         ) VALUES (
           ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
-          ?10, ?11, ?12, ?13, ?14
+          ?10, ?11, ?12, ?13, ?14, ?15
         )
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
@@ -234,6 +239,7 @@ impl SkillStore {
           updated_at = excluded.updated_at,
           last_sync_at = excluded.last_sync_at,
           last_seen_at = excluded.last_seen_at,
+          enabled = excluded.enabled,
           status = excluded.status",
                 params![
                     record.id,
@@ -249,6 +255,7 @@ impl SkillStore {
                     record.updated_at,
                     record.last_sync_at,
                     record.last_seen_at,
+                    record.enabled as i32,
                     record.status
                 ],
             )?;
@@ -291,7 +298,7 @@ impl SkillStore {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
         "SELECT id, name, description, source_type, source_ref, source_subpath, source_revision, central_path, content_hash,
-                created_at, updated_at, last_sync_at, last_seen_at, status
+                created_at, updated_at, last_sync_at, last_seen_at, enabled, status
          FROM skills
          ORDER BY updated_at DESC",
       )?;
@@ -310,7 +317,8 @@ impl SkillStore {
                     updated_at: row.get(10)?,
                     last_sync_at: row.get(11)?,
                     last_seen_at: row.get(12)?,
-                    status: row.get(13)?,
+                    enabled: row.get::<_, i32>(13)? != 0,
+                    status: row.get(14)?,
                 })
             })?;
 
@@ -326,7 +334,7 @@ impl SkillStore {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare(
         "SELECT id, name, description, source_type, source_ref, source_subpath, source_revision, central_path, content_hash,
-                created_at, updated_at, last_sync_at, last_seen_at, status
+                created_at, updated_at, last_sync_at, last_seen_at, enabled, status
          FROM skills
          WHERE id = ?1
          LIMIT 1",
@@ -347,7 +355,8 @@ impl SkillStore {
                     updated_at: row.get(10)?,
                     last_sync_at: row.get(11)?,
                     last_seen_at: row.get(12)?,
-                    status: row.get(13)?,
+                    enabled: row.get::<_, i32>(13)? != 0,
+                    status: row.get(14)?,
                 }))
             } else {
                 Ok(None)
@@ -365,6 +374,19 @@ impl SkillStore {
                 "UPDATE skills SET description = ?1 WHERE id = ?2",
                 params![description, skill_id],
             )?;
+            Ok(())
+        })
+    }
+
+    pub fn set_skill_enabled(&self, skill_id: &str, enabled: bool) -> Result<()> {
+        self.with_conn(|conn| {
+            let changed = conn.execute(
+                "UPDATE skills SET enabled = ?1, updated_at = ?2 WHERE id = ?3",
+                params![enabled as i32, now_ms(), skill_id],
+            )?;
+            if changed == 0 {
+                anyhow::bail!("skill not found: {}", skill_id);
+            }
             Ok(())
         })
     }
@@ -624,6 +646,28 @@ impl SkillStore {
         })
     }
 
+    pub fn update_skill_target_status(
+        &self,
+        skill_id: &str,
+        tool: &str,
+        scope: &str,
+        project_path: Option<&str>,
+        status: &str,
+    ) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "UPDATE skill_targets
+                 SET status = ?5
+                 WHERE skill_id = ?1
+                   AND tool = ?2
+                   AND scope = ?3
+                   AND ((?4 IS NULL AND project_path IS NULL) OR project_path = ?4)",
+                params![skill_id, tool, scope, project_path, status],
+            )?;
+            Ok(())
+        })
+    }
+
     fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
         let conn = Connection::open(&self.db_path)
             .with_context(|| format!("failed to open db at {:?}", self.db_path))?;
@@ -682,6 +726,11 @@ fn migrate_tags_to_v5(conn: &Connection) -> Result<()> {
            FOREIGN KEY(tag_id) REFERENCES skill_tags(id) ON DELETE CASCADE
          );",
     )?;
+    Ok(())
+}
+
+fn migrate_skill_enabled_to_v6(conn: &Connection) -> Result<()> {
+    conn.execute_batch("ALTER TABLE skills ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;")?;
     Ok(())
 }
 

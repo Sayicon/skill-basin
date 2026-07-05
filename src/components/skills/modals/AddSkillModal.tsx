@@ -1,6 +1,13 @@
-import { memo } from 'react'
+import { memo, type SetStateAction } from 'react'
 import { Check } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import ScopeSelector from '../ScopeSelector'
+import {
+  getUnsupportedToolsForScope,
+  isToolUnsupportedForScope,
+  normalizeProjectPaths,
+  type InstallScope,
+} from '../installScope'
 import type { TagWithCountDto, ToolOption, ToolStatusDto } from '../types'
 
 type AddSkillModalProps = {
@@ -17,6 +24,9 @@ type AddSkillModalProps = {
   syncTargets: Record<string, boolean>
   installedTools: ToolOption[]
   toolStatus: ToolStatusDto | null
+  installScope: InstallScope
+  installProjects: string[]
+  recentProjects: string[]
   onRequestClose: () => void
   onTabChange: (tab: 'local' | 'git') => void
   onLocalPathChange: (value: string) => void
@@ -26,6 +36,9 @@ type AddSkillModalProps = {
   onGitNameChange: (value: string) => void
   onToggleTag: (tagId: number) => void
   onSyncTargetChange: (toolId: string, checked: boolean) => void
+  onInstallScopeChange: (scope: InstallScope) => void
+  onInstallProjectsChange: (projects: SetStateAction<string[]>) => void
+  onPickProject: () => Promise<string | undefined>
   onSubmit: () => void
   t: TFunction
 }
@@ -44,6 +57,9 @@ const AddSkillModal = ({
   syncTargets,
   installedTools,
   toolStatus,
+  installScope,
+  installProjects,
+  recentProjects,
   onRequestClose,
   onTabChange,
   onLocalPathChange,
@@ -53,17 +69,28 @@ const AddSkillModal = ({
   onGitNameChange,
   onToggleTag,
   onSyncTargetChange,
+  onInstallScopeChange,
+  onInstallProjectsChange,
+  onPickProject,
   onSubmit,
   t,
 }: AddSkillModalProps) => {
   if (!open) return null
+
+  const projectRequired =
+    installScope === 'project' &&
+    normalizeProjectPaths(installProjects).length === 0
+  const unsupportedTools = getUnsupportedToolsForScope(
+    installedTools,
+    installScope,
+  )
 
   return (
     <div
       className="modal-backdrop"
       onClick={() => (canClose ? onRequestClose() : null)}
     >
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal add-skill-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div className="modal-title">{t('addSkillTitle')}</div>
           <button
@@ -96,59 +123,63 @@ const AddSkillModal = ({
 
           {addModalTab === 'local' ? (
             <>
-              <div className="form-group">
-                <label className="label">{t('localFolder')}</label>
-                <div className="input-row">
+              <div className="form-group form-row-inline">
+                <div className="form-field">
+                  <label className="label">{t('localFolder')}</label>
+                  <div className="input-row">
+                    <input
+                      className="input"
+                      placeholder={t('localPathPlaceholder')}
+                      value={localPath}
+                      onChange={(event) => onLocalPathChange(event.target.value)}
+                    />
+                    <button
+                      className="btn btn-secondary input-action"
+                      type="button"
+                      onClick={onPickLocalPath}
+                      disabled={!canClose}
+                    >
+                      {t('browse')}
+                    </button>
+                  </div>
+                </div>
+                <div className="form-field">
+                  <label className="label">{t('optionalNamePlaceholder')}</label>
                   <input
                     className="input"
-                    placeholder={t('localPathPlaceholder')}
-                    value={localPath}
-                    onChange={(event) => onLocalPathChange(event.target.value)}
+                    placeholder={t('optionalNamePlaceholder')}
+                    value={localName}
+                    onChange={(event) => onLocalNameChange(event.target.value)}
                   />
-                  <button
-                    className="btn btn-secondary input-action"
-                    type="button"
-                    onClick={onPickLocalPath}
-                    disabled={!canClose}
-                  >
-                    {t('browse')}
-                  </button>
                 </div>
-              </div>
-              <div className="form-group">
-                <label className="label">{t('optionalNamePlaceholder')}</label>
-                <input
-                  className="input"
-                  placeholder={t('optionalNamePlaceholder')}
-                  value={localName}
-                  onChange={(event) => onLocalNameChange(event.target.value)}
-                />
               </div>
             </>
           ) : (
             <>
-              <div className="form-group">
-                <label className="label">{t('repositoryUrl')}</label>
-                <input
-                  className="input"
-                  placeholder={t('gitUrlPlaceholder')}
-                  value={gitUrl}
-                  onChange={(event) => onGitUrlChange(event.target.value)}
-                />
-              </div>
-              <div className="form-group">
-                <label className="label">{t('optionalNamePlaceholder')}</label>
-                <input
-                  className="input"
-                  placeholder={t('optionalNamePlaceholder')}
-                  value={gitName}
-                  onChange={(event) => onGitNameChange(event.target.value)}
-                />
+              <div className="form-group form-row-inline">
+                <div className="form-field">
+                  <label className="label">{t('repositoryUrl')}</label>
+                  <input
+                    className="input"
+                    placeholder={t('gitUrlPlaceholder')}
+                    value={gitUrl}
+                    onChange={(event) => onGitUrlChange(event.target.value)}
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="label">{t('optionalNamePlaceholder')}</label>
+                  <input
+                    className="input"
+                    placeholder={t('optionalNamePlaceholder')}
+                    value={gitName}
+                    onChange={(event) => onGitNameChange(event.target.value)}
+                  />
+                </div>
               </div>
             </>
           )}
 
-          <div className="form-group">
+          <div className="form-group tag-field-inline">
             <label className="label">{t('addTags')}</label>
             {tags.length > 0 ? (
               <div className="add-tags-list">
@@ -175,32 +206,70 @@ const AddSkillModal = ({
           </div>
 
           <div className="form-group">
+            <ScopeSelector
+              scope={installScope}
+              projects={installProjects}
+              recentProjects={recentProjects}
+              disabled={loading}
+              compact
+              title={t('installScope.title')}
+              onScopeChange={onInstallScopeChange}
+              onProjectsChange={onInstallProjectsChange}
+              onPickProject={onPickProject}
+              t={t}
+            />
+          </div>
+
+          <div className="form-group">
             <label className="label">{t('installToTools')}</label>
             {toolStatus ? (
               <div className="tool-matrix">
-                {installedTools.map((tool) => (
-                  <label
-                    key={tool.id}
-                    className={`tool-pill-toggle${
-                      syncTargets[tool.id] ? ' active' : ''
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(syncTargets[tool.id])}
-                      onChange={(event) =>
-                        onSyncTargetChange(tool.id, event.target.checked)
+                {installedTools.map((tool) => {
+                  const unsupported = isToolUnsupportedForScope(
+                    tool,
+                    installScope,
+                  )
+
+                  return (
+                    <label
+                      key={tool.id}
+                      className={`tool-pill-toggle${
+                        syncTargets[tool.id] ? ' active' : ''
+                      }${unsupported ? ' disabled' : ''}`}
+                      title={
+                        unsupported
+                          ? t('installScope.unsupportedTool', {
+                              tool: tool.label,
+                            })
+                          : undefined
                       }
-                    />
-                    {syncTargets[tool.id] ? <span className="status-badge" /> : null}
-                    {tool.label}
-                  </label>
-                ))}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(syncTargets[tool.id])}
+                        onChange={(event) =>
+                          onSyncTargetChange(tool.id, event.target.checked)
+                        }
+                        disabled={unsupported}
+                      />
+                      {syncTargets[tool.id] ? (
+                        <span className="status-badge" />
+                      ) : null}
+                      {tool.label}
+                    </label>
+                  )
+                })}
               </div>
             ) : (
               <div className="helper-text">{t('detectingTools')}</div>
             )}
-            <div className="helper-text">{t('syncAfterCreate')}</div>
+            {unsupportedTools.length > 0 ? (
+              <div className="helper-text" role="status">
+                {t('installScope.unsupportedSelectedHint', {
+                  tools: unsupportedTools.map((tool) => tool.label).join(', '),
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="modal-footer">
@@ -214,7 +283,7 @@ const AddSkillModal = ({
           <button
             className="btn btn-primary"
             onClick={onSubmit}
-            disabled={loading}
+            disabled={loading || projectRequired}
           >
             {addModalTab === 'local' ? t('create') : t('install')}
           </button>

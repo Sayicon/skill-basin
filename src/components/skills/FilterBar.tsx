@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowUpDown, Check, ChevronDown, Search, Tags } from 'lucide-react'
+import { ArrowUpDown, Check, CheckSquare, ChevronDown, Search, Tags } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { TagWithCountDto } from './types'
 
@@ -12,6 +12,8 @@ type FilterBarProps = {
   includeUntagged: boolean
   untaggedCount: number
   totalCount: number
+  bulkMode: boolean
+  bulkSelectedCount: number
   onSortChange: (value: 'updated' | 'name') => void
   onSearchChange: (value: string) => void
   onScopeFilterChange: (value: 'all' | 'global' | 'project') => void
@@ -19,6 +21,7 @@ type FilterBarProps = {
   onToggleUntagged: () => void
   onClearTags: () => void
   onManageTags: () => void
+  onToggleBulkMode: () => void
   t: TFunction
 }
 
@@ -31,6 +34,8 @@ const FilterBar = ({
   includeUntagged,
   untaggedCount,
   totalCount,
+  bulkMode,
+  bulkSelectedCount,
   onSortChange,
   onSearchChange,
   onScopeFilterChange,
@@ -38,6 +43,7 @@ const FilterBar = ({
   onToggleUntagged,
   onClearTags,
   onManageTags,
+  onToggleBulkMode,
   t,
 }: FilterBarProps) => {
   const [tagMenuOpen, setTagMenuOpen] = useState(false)
@@ -101,6 +107,16 @@ const FilterBar = ({
             <option value="updated">{t('sortUpdated')}</option>
             <option value="name">{t('sortName')}</option>
           </select>
+        </button>
+        <button
+          className={`btn btn-secondary bulk-mode-btn${bulkMode ? ' active' : ''}`}
+          type="button"
+          onClick={onToggleBulkMode}
+        >
+          <CheckSquare size={14} />
+          {bulkMode
+            ? t('bulk.selectedShort', { count: bulkSelectedCount })
+            : t('bulk.manage')}
         </button>
         <div className="tag-filter-wrap" ref={tagMenuRef}>
           <button

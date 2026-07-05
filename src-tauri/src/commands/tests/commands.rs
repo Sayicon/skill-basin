@@ -43,6 +43,55 @@ fn expand_home_path_empty_is_error() {
 }
 
 #[test]
+fn saving_custom_tool_config_creates_enabled_skills_dir() {
+    let (dir, store) = make_store();
+    let existing = dir.path().join("existing-skills");
+    std::fs::create_dir_all(&existing).unwrap();
+    let created = dir.path().join("created-skills");
+    assert!(!created.exists());
+
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![
+                CustomToolConfig {
+                    key: "custom_existing".to_string(),
+                    label: "Existing".to_string(),
+                    skills_dir: existing.to_string_lossy().to_string(),
+                    project_skills_dir: None,
+                    enabled: true,
+                },
+                CustomToolConfig {
+                    key: "custom_created".to_string(),
+                    label: "Created".to_string(),
+                    skills_dir: created.to_string_lossy().to_string(),
+                    project_skills_dir: None,
+                    enabled: true,
+                },
+            ],
+        },
+    )
+    .unwrap();
+    assert!(created.is_dir());
+
+    let tools = runtime_tools(&store, true).unwrap();
+    let existing_tool = tools
+        .iter()
+        .find(|tool| tool.key == "custom_existing")
+        .unwrap();
+    let created_tool = tools
+        .iter()
+        .find(|tool| tool.key == "custom_created")
+        .unwrap();
+
+    assert!(existing_tool.enabled);
+    assert!(existing_tool.installed);
+    assert!(created_tool.enabled);
+    assert!(created_tool.installed);
+}
+
+#[test]
 fn normalize_scope_defaults_to_global_and_rejects_unknown() {
     assert_eq!(normalize_scope(None).unwrap(), "global");
     assert_eq!(normalize_scope(Some("global")).unwrap(), "global");
@@ -143,6 +192,7 @@ fn get_managed_skills_impl_maps_targets() {
         updated_at: 2,
         last_sync_at: None,
         last_seen_at: 1,
+        enabled: true,
         status: "ok".to_string(),
     };
     store.upsert_skill(&skill).unwrap();
@@ -165,6 +215,7 @@ fn get_managed_skills_impl_maps_targets() {
 
     let out = get_managed_skills_impl(&store).unwrap();
     assert_eq!(out.len(), 1);
+    assert!(out[0].enabled);
     assert_eq!(out[0].tags.len(), 1);
     assert_eq!(out[0].tags[0].name, "Frontend");
     assert_eq!(out[0].targets.len(), 1);

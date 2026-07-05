@@ -1,6 +1,11 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+
+use super::skill_store::SkillStore;
+
+pub const TOOL_CONFIG_SETTING: &str = "tool_config_v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ToolId {
@@ -115,6 +120,23 @@ pub struct ToolAdapter {
     pub relative_detect_dir: &'static str,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CustomToolConfig {
+    pub key: String,
+    pub label: String,
+    pub skills_dir: String,
+    pub project_skills_dir: Option<String>,
+    pub enabled: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ToolConfig {
+    #[serde(default)]
+    pub disabled_builtin_tools: Vec<String>,
+    #[serde(default)]
+    pub custom_tools: Vec<CustomToolConfig>,
+}
+
 #[derive(Clone, Debug)]
 pub struct DetectedSkill {
     pub tool: ToolId,
@@ -122,6 +144,110 @@ pub struct DetectedSkill {
     pub path: PathBuf,
     pub is_link: bool,
     pub link_target: Option<PathBuf>,
+}
+
+pub fn load_tool_config(store: &SkillStore) -> Result<ToolConfig> {
+    let raw = store.get_setting(TOOL_CONFIG_SETTING)?;
+    let config = raw
+        .as_deref()
+        .and_then(|value| serde_json::from_str::<ToolConfig>(value).ok())
+        .unwrap_or_default();
+    sanitize_tool_config(config)
+}
+
+pub fn save_tool_config(store: &SkillStore, config: ToolConfig) -> Result<ToolConfig> {
+    let config = sanitize_tool_config(config)?;
+    ensure_enabled_custom_tool_dirs(&config)?;
+    store.set_setting(TOOL_CONFIG_SETTING, &serde_json::to_string(&config)?)?;
+    Ok(config)
+}
+
+pub fn is_builtin_tool_enabled(config: &ToolConfig, key: &str) -> bool {
+    !config
+        .disabled_builtin_tools
+        .iter()
+        .any(|disabled| disabled == key)
+}
+
+pub fn is_valid_custom_tool_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
+}
+
+fn expand_custom_tool_path(input: &str) -> Result<PathBuf> {
+    let trimmed = input.trim();
+    if trimmed == "~" {
+        return dirs::home_dir().context("failed to resolve home directory");
+    }
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        let home = dirs::home_dir().context("failed to resolve home directory")?;
+        return Ok(home.join(rest));
+    }
+    Ok(PathBuf::from(trimmed))
+}
+
+fn ensure_enabled_custom_tool_dirs(config: &ToolConfig) -> Result<()> {
+    for tool in &config.custom_tools {
+        if !tool.enabled {
+            continue;
+        }
+        let skills_dir = expand_custom_tool_path(&tool.skills_dir)?;
+        std::fs::create_dir_all(&skills_dir)
+            .with_context(|| format!("create custom tool skills dir {:?}", skills_dir))?;
+    }
+    Ok(())
+}
+
+fn sanitize_tool_config(mut config: ToolConfig) -> Result<ToolConfig> {
+    let builtin_keys = default_tool_adapters()
+        .into_iter()
+        .map(|adapter| adapter.id.as_key().to_string())
+        .collect::<std::collections::HashSet<_>>();
+
+    config
+        .disabled_builtin_tools
+        .retain(|key| builtin_keys.contains(key));
+    config.disabled_builtin_tools.sort();
+    config.disabled_builtin_tools.dedup();
+
+    let mut seen_custom_keys = std::collections::HashSet::new();
+    let mut custom_tools = Vec::new();
+    for mut tool in config.custom_tools {
+        tool.key = tool.key.trim().to_string();
+        tool.label = tool.label.trim().to_string();
+        tool.skills_dir = tool.skills_dir.trim().to_string();
+        tool.project_skills_dir = tool
+            .project_skills_dir
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        if tool.key.is_empty() {
+            anyhow::bail!("custom tool key is required");
+        }
+        if builtin_keys.contains(&tool.key) {
+            anyhow::bail!(
+                "custom tool key conflicts with a built-in tool: {}",
+                tool.key
+            );
+        }
+        if !is_valid_custom_tool_key(&tool.key) {
+            anyhow::bail!("custom tool key contains invalid characters: {}", tool.key);
+        }
+        if !seen_custom_keys.insert(tool.key.clone()) {
+            anyhow::bail!("duplicate custom tool key: {}", tool.key);
+        }
+        if tool.label.is_empty() {
+            anyhow::bail!("custom tool name is required");
+        }
+        if tool.skills_dir.is_empty() {
+            anyhow::bail!("custom tool skills directory is required");
+        }
+        custom_tools.push(tool);
+    }
+    config.custom_tools = custom_tools;
+
+    Ok(config)
 }
 
 pub fn default_tool_adapters() -> Vec<ToolAdapter> {
@@ -477,6 +603,7 @@ pub fn resolve_default_path(adapter: &ToolAdapter) -> Result<PathBuf> {
     Ok(home.join(adapter.relative_skills_dir))
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn resolve_project_path(adapter: &ToolAdapter, project_root: &Path) -> Result<PathBuf> {
     Ok(project_root.join(project_relative_skills_dir(adapter)))
 }
