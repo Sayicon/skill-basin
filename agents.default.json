@@ -1,4 +1,857 @@
 {
   "version": 1,
-  "adapters": {}
+  "adapters": {
+    "aider_desk": {
+      "displayName": "AiderDesk",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.aider-desk/skills",
+      "projectSkillsDir": ".aider-desk/skills",
+      "detect": [
+        "~/.aider-desk"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "amp": {
+      "displayName": "Amp",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "antigravity_cli": {
+      "displayName": "Antigravity CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.gemini/antigravity-cli/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.gemini"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "astrbot": {
+      "displayName": "AstrBot",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.astrbot/data/skills",
+      "projectSkillsDir": "data/skills",
+      "detect": [
+        "~/.astrbot"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "autohand_code": {
+      "displayName": "Autohand Code CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.autohand/skills",
+      "projectSkillsDir": ".autohand/skills",
+      "detect": [
+        "~/.autohand"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "augment": {
+      "displayName": "Augment",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.augment/skills",
+      "projectSkillsDir": ".augment/skills",
+      "detect": [
+        "~/.augment"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "bob": {
+      "displayName": "IBM Bob",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.bob/skills",
+      "projectSkillsDir": ".bob/skills",
+      "detect": [
+        "~/.bob"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "codearts_agent": {
+      "displayName": "CodeArts Agent",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.codeartsdoer/skills",
+      "projectSkillsDir": ".codeartsdoer/skills",
+      "detect": [
+        "~/.codeartsdoer"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "codebuddy": {
+      "displayName": "CodeBuddy",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.codebuddy/skills",
+      "projectSkillsDir": ".codebuddy/skills",
+      "detect": [
+        "~/.codebuddy"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "codemaker": {
+      "displayName": "Codemaker",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.codemaker/skills",
+      "projectSkillsDir": ".codemaker/skills",
+      "detect": [
+        "~/.codemaker"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "codestudio": {
+      "displayName": "Code Studio",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.codestudio/skills",
+      "projectSkillsDir": ".codestudio/skills",
+      "detect": [
+        "~/.codestudio"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "codex": {
+      "displayName": "Codex",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.codex/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.codex"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "command_code": {
+      "displayName": "Command Code",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.commandcode/skills",
+      "projectSkillsDir": ".commandcode/skills",
+      "detect": [
+        "~/.commandcode"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "continue": {
+      "displayName": "Continue",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.continue/skills",
+      "projectSkillsDir": ".continue/skills",
+      "detect": [
+        "~/.continue"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "cortex": {
+      "displayName": "Cortex Code",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.snowflake/cortex/skills",
+      "projectSkillsDir": ".cortex/skills",
+      "detect": [
+        "~/.snowflake"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "crush": {
+      "displayName": "Crush",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/crush/skills",
+      "projectSkillsDir": ".crush/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "deepagents": {
+      "displayName": "Deep Agents",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.deepagents/agent/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.deepagents"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "devin": {
+      "displayName": "Devin for Terminal",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/devin/skills",
+      "projectSkillsDir": ".devin/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "dexto": {
+      "displayName": "Dexto",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.agents"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "droid": {
+      "displayName": "Droid",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.factory/skills",
+      "projectSkillsDir": ".factory/skills",
+      "detect": [
+        "~/.factory"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "eve": {
+      "displayName": "Eve",
+      "adapterKind": "dir",
+      "projectSkillsDir": "agent/skills",
+      "detect": [],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "firebender": {
+      "displayName": "Firebender",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.firebender/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.firebender"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "forgecode": {
+      "displayName": "ForgeCode",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.forge/skills",
+      "projectSkillsDir": ".forge/skills",
+      "detect": [
+        "~/.forge"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "gemini_cli": {
+      "displayName": "Gemini CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.gemini/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.gemini"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "github_copilot": {
+      "displayName": "GitHub Copilot",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.copilot/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.copilot"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "goose": {
+      "displayName": "Goose",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/goose/skills",
+      "projectSkillsDir": ".goose/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "inference_sh": {
+      "displayName": "inference.sh",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.inferencesh/skills",
+      "projectSkillsDir": ".inferencesh/skills",
+      "detect": [
+        "~/.inferencesh"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "jazz": {
+      "displayName": "Jazz",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.jazz/skills",
+      "projectSkillsDir": ".jazz/skills",
+      "detect": [
+        "~/.jazz"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "junie": {
+      "displayName": "Junie",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.junie/skills",
+      "projectSkillsDir": ".junie/skills",
+      "detect": [
+        "~/.junie"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "iflow_cli": {
+      "displayName": "iFlow CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.iflow/skills",
+      "projectSkillsDir": ".iflow/skills",
+      "detect": [
+        "~/.iflow"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "kilo": {
+      "displayName": "Kilo Code",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.kilocode/skills",
+      "projectSkillsDir": ".kilocode/skills",
+      "detect": [
+        "~/.kilocode"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "kimi_code_cli": {
+      "displayName": "Kimi Code CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.agents"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "kiro_cli": {
+      "displayName": "Kiro CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.kiro/skills",
+      "projectSkillsDir": ".kiro/skills",
+      "detect": [
+        "~/.kiro"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "kode": {
+      "displayName": "Kode",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.kode/skills",
+      "projectSkillsDir": ".kode/skills",
+      "detect": [
+        "~/.kode"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "lingma": {
+      "displayName": "Lingma",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.lingma/skills",
+      "projectSkillsDir": ".lingma/skills",
+      "detect": [
+        "~/.lingma"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "loaf": {
+      "displayName": "Loaf",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.agents"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "mcpjam": {
+      "displayName": "MCPJam",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.mcpjam/skills",
+      "projectSkillsDir": ".mcpjam/skills",
+      "detect": [
+        "~/.mcpjam"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "mistral_vibe": {
+      "displayName": "Mistral Vibe",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.vibe/skills",
+      "projectSkillsDir": ".vibe/skills",
+      "detect": [
+        "~/.vibe"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "moxby": {
+      "displayName": "Moxby",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.moxby/skills",
+      "projectSkillsDir": ".moxby/skills",
+      "detect": [
+        "~/.moxby"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "mux": {
+      "displayName": "Mux",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.mux/skills",
+      "projectSkillsDir": ".mux/skills",
+      "detect": [
+        "~/.mux"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "opencode": {
+      "displayName": "OpenCode",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/opencode/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "openhands": {
+      "displayName": "OpenHands",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.openhands/skills",
+      "projectSkillsDir": ".openhands/skills",
+      "detect": [
+        "~/.openhands"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "ona": {
+      "displayName": "Ona",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.ona/skills",
+      "projectSkillsDir": ".ona/skills",
+      "detect": [
+        "~/.ona"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "pi": {
+      "displayName": "Pi",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.pi/agent/skills",
+      "projectSkillsDir": ".pi/skills",
+      "detect": [
+        "~/.pi"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "qoder": {
+      "displayName": "Qoder",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.qoder/skills",
+      "projectSkillsDir": ".qoder/skills",
+      "detect": [
+        "~/.qoder"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "qoder_cn": {
+      "displayName": "Qoder CN",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.qoder-cn/skills",
+      "projectSkillsDir": ".qoder/skills",
+      "detect": [
+        "~/.qoder-cn"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "qwen_code": {
+      "displayName": "Qwen Code",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.qwen/skills",
+      "projectSkillsDir": ".qwen/skills",
+      "detect": [
+        "~/.qwen"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "replit": {
+      "displayName": "Replit",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "reasonix": {
+      "displayName": "Reasonix",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.reasonix/skills",
+      "projectSkillsDir": ".reasonix/skills",
+      "detect": [
+        "~/.reasonix"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "rovodev": {
+      "displayName": "Rovo Dev",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.rovodev/skills",
+      "projectSkillsDir": ".rovodev/skills",
+      "detect": [
+        "~/.rovodev"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "roo": {
+      "displayName": "Roo Code",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.roo/skills",
+      "projectSkillsDir": ".roo/skills",
+      "detect": [
+        "~/.roo"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "tabnine_cli": {
+      "displayName": "Tabnine CLI",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.tabnine/agent/skills",
+      "projectSkillsDir": ".tabnine/agent/skills",
+      "detect": [
+        "~/.tabnine"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "terramind": {
+      "displayName": "Terramind",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.terramind/skills",
+      "projectSkillsDir": ".terramind/skills",
+      "detect": [
+        "~/.terramind"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "tinycloud": {
+      "displayName": "Tinycloud",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.tinycloud/skills",
+      "projectSkillsDir": ".tinycloud/skills",
+      "detect": [
+        "~/.tinycloud"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "trae": {
+      "displayName": "Trae",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.trae/skills",
+      "projectSkillsDir": ".trae/skills",
+      "detect": [
+        "~/.trae"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "trae_cn": {
+      "displayName": "Trae CN",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.trae-cn/skills",
+      "projectSkillsDir": ".trae/skills",
+      "detect": [
+        "~/.trae-cn"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "warp": {
+      "displayName": "Warp",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.agents"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "windsurf": {
+      "displayName": "Windsurf",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.codeium/windsurf/skills",
+      "projectSkillsDir": ".windsurf/skills",
+      "detect": [
+        "~/.codeium"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "zed": {
+      "displayName": "Zed",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.agents"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "zencoder": {
+      "displayName": "Zencoder",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.zencoder/skills",
+      "projectSkillsDir": ".zencoder/skills",
+      "detect": [
+        "~/.zencoder"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "zenflow": {
+      "displayName": "Zenflow",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.zencoder/skills",
+      "projectSkillsDir": ".zencoder/skills",
+      "detect": [
+        "~/.zencoder"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "neovate": {
+      "displayName": "Neovate",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.neovate/skills",
+      "projectSkillsDir": ".neovate/skills",
+      "detect": [
+        "~/.neovate"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "pochi": {
+      "displayName": "Pochi",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.pochi/skills",
+      "projectSkillsDir": ".pochi/skills",
+      "detect": [
+        "~/.pochi"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "promptscript": {
+      "displayName": "PromptScript",
+      "adapterKind": "dir",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "adal": {
+      "displayName": "AdaL",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.adal/skills",
+      "projectSkillsDir": ".adal/skills",
+      "detect": [
+        "~/.adal"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    },
+    "universal": {
+      "displayName": "Universal",
+      "adapterKind": "dir",
+      "globalSkillsDir": "~/.config/agents/skills",
+      "projectSkillsDir": ".agents/skills",
+      "detect": [
+        "~/.config"
+      ],
+      "defaultStrategy": "auto",
+      "verified": false,
+      "source": "https://github.com/vercel-labs/skills/blob/68f0a05f8b3bb73ff5cbab9dab464cd264453026/src/agents.ts",
+      "custom": false
+    }
+  }
 }

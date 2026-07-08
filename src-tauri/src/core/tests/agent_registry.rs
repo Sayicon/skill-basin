@@ -82,16 +82,16 @@ fn tier1_builtin_always_wins_over_agents_json() {
 
     assert_eq!(claude.display_name, "Claude Code");
     assert!(!claude.is_custom);
-    assert_eq!(
-        claude.project_skills_dir.as_deref(),
-        Some(".claude/skills")
-    );
+    assert_eq!(claude.project_skills_dir.as_deref(), Some(".claude/skills"));
 }
 
 #[test]
 fn non_tier1_builtin_is_overridden_by_agents_json() {
     let basin = tempfile::tempdir().unwrap();
-    write_registry(basin.path(), &[("codex", dir_entry("Codex (vendored override)"))]);
+    write_registry(
+        basin.path(),
+        &[("codex", dir_entry("Codex (vendored override)"))],
+    );
 
     let resolved = resolve_all_adapters(basin.path(), &ToolConfig::default()).unwrap();
     let codex = resolved
@@ -146,8 +146,9 @@ fn tier2_vendored_entries_are_never_dropped_by_seen_set() {
     );
 
     let resolved = resolve_all_adapters(basin.path(), &ToolConfig::default()).unwrap();
-    assert!(resolved.iter().any(|a| a.key == "junie"
-        && a.display_name == "Junie override"));
+    assert!(resolved
+        .iter()
+        .any(|a| a.key == "junie" && a.display_name == "Junie override"));
     assert!(resolved
         .iter()
         .any(|a| a.key == "zzz-brand-new" && a.display_name == "Brand New Tool"));
@@ -182,10 +183,7 @@ fn update_custom_agent_round_trip() {
     update_custom_agent(basin.path(), "my_tool", dir_entry("My Tool Renamed")).unwrap();
 
     let registry = read_agent_registry(basin.path()).unwrap();
-    assert_eq!(
-        registry.adapters["my_tool"].display_name,
-        "My Tool Renamed"
-    );
+    assert_eq!(registry.adapters["my_tool"].display_name, "My Tool Renamed");
 }
 
 #[test]
@@ -219,6 +217,51 @@ fn remove_custom_agent_rejects_vendored_entry() {
     write_registry(basin.path(), &[("codex", dir_entry("Codex vendored"))]);
     let err = remove_custom_agent(basin.path(), "codex").unwrap_err();
     assert!(err.to_string().contains("vendored"));
+}
+
+#[test]
+fn is_installed_prefers_detect_dirs_over_skills_dir() {
+    let tmp = tempfile::tempdir().unwrap();
+    let detect_only = tmp.path().join("detect-only");
+    std::fs::create_dir_all(&detect_only).unwrap();
+    let missing_skills = tmp.path().join("does-not-exist/skills");
+
+    let adapter = ResolvedAdapter {
+        key: "x".to_string(),
+        display_name: "X".to_string(),
+        adapter_kind: AdapterKind::Dir,
+        skills_dir: Some(missing_skills),
+        project_skills_dir: None,
+        detect_dirs: vec![detect_only],
+        mcp_endpoint: None,
+        default_strategy: "auto".to_string(),
+        is_custom: false,
+        verified: false,
+        enabled: true,
+    };
+
+    // Skills dir doesn't exist, but the detect dir does — installed.
+    assert!(adapter.is_installed());
+}
+
+#[test]
+fn is_installed_falls_back_to_skills_dir_without_detect() {
+    let tmp = tempfile::tempdir().unwrap();
+    let adapter = ResolvedAdapter {
+        key: "x".to_string(),
+        display_name: "X".to_string(),
+        adapter_kind: AdapterKind::Dir,
+        skills_dir: Some(tmp.path().to_path_buf()),
+        project_skills_dir: None,
+        detect_dirs: vec![],
+        mcp_endpoint: None,
+        default_strategy: "auto".to_string(),
+        is_custom: false,
+        verified: false,
+        enabled: true,
+    };
+
+    assert!(adapter.is_installed());
 }
 
 #[test]

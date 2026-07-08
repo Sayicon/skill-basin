@@ -3,6 +3,12 @@
 /**
  * Vendors vercel-labs/skills' src/agents.ts (MIT) into basin/agents.json shape.
  *
+ * Run: `node scripts/vendor-agents.mjs` — re-fetches the current agents.ts,
+ * re-parses it, and overwrites `agents.default.json` at the repo root (same
+ * bundling pattern as `featured-skills.json` — committed, embedded via
+ * `include_str!`). Not wired into CI; rerun manually when vercel's list
+ * changes (GITHUB_TOKEN env var optional, raises the rate limit).
+ *
  * agents.ts is real TypeScript (computed globalSkillsDir via join(homeVar, '...'),
  * async detectInstalled functions) — not a plain data literal — so this does a
  * lightweight structural parse (brace-depth entry splitter + per-field regex)
@@ -170,4 +176,68 @@ export function transformAgentsTs(source, { sourceUrl, tier1Keys = TIER1_KEYS } 
   }
 
   return { registry: { version: 1, adapters }, skipped }
+}
+
+// ─── CLI (fetch + write) ───
+
+const REPO = 'vercel-labs/skills'
+const FILE_PATH = 'src/agents.ts'
+const OUTPUT_FILE = new URL('../agents.default.json', import.meta.url)
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || ''
+
+function githubHeaders(extra = {}) {
+  const headers = { 'User-Agent': 'skillbasin-vendor-agents', ...extra }
+  if (GITHUB_TOKEN) headers.Authorization = `Bearer ${GITHUB_TOKEN}`
+  return headers
+}
+
+async function fetchLatestCommitSha() {
+  const url = `https://api.github.com/repos/${REPO}/commits?path=${FILE_PATH}&per_page=1`
+  const res = await fetch(url, { headers: githubHeaders({ Accept: 'application/vnd.github+json' }) })
+  if (!res.ok) {
+    throw new Error(`GitHub commits API failed: ${res.status} ${res.statusText}`)
+  }
+  const commits = await res.json()
+  if (!commits[0]?.sha) {
+    throw new Error('no commits found for src/agents.ts')
+  }
+  return commits[0].sha
+}
+
+async function fetchAgentsTsAt(sha) {
+  const url = `https://raw.githubusercontent.com/${REPO}/${sha}/${FILE_PATH}`
+  const res = await fetch(url, { headers: githubHeaders() })
+  if (!res.ok) {
+    throw new Error(`raw.githubusercontent.com fetch failed: ${res.status} ${res.statusText}`)
+  }
+  return res.text()
+}
+
+async function main() {
+  const sha = await fetchLatestCommitSha()
+  const source = await fetchAgentsTsAt(sha)
+  const sourceUrl = `https://github.com/${REPO}/blob/${sha}/${FILE_PATH}`
+
+  const { registry, skipped } = transformAgentsTs(source, { sourceUrl })
+
+  const { writeFileSync } = await import('node:fs')
+  writeFileSync(OUTPUT_FILE, JSON.stringify(registry, null, 2) + '\n')
+
+  const vendoredCount = Object.keys(registry.adapters).length
+  console.log(`Vendored ${vendoredCount} agents from ${REPO}@${sha.slice(0, 7)} -> agents.default.json`)
+  if (skipped.length) {
+    console.warn(`Skipped ${skipped.length} entries (needs a manual agents.json entry if desired):`)
+    for (const { key, reason } of skipped) {
+      console.warn(`  - ${key}: ${reason}`)
+    }
+  }
+}
+
+const { fileURLToPath } = await import('node:url')
+const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
+if (isMain) {
+  main().catch((err) => {
+    console.error(err)
+    process.exitCode = 1
+  })
 }

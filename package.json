@@ -14,6 +14,7 @@
     "rust:test": "cd src-tauri && cargo test",
     "check": "npm run lint && npm run test && npm run build && npm run rust:fmt:check && npm run rust:clippy && npm run rust:test",
     "preview": "vite preview",
+    "vendor:agents": "node scripts/vendor-agents.mjs",
     "version:set": "node scripts/version.mjs set",
     "version:sync": "node scripts/version.mjs sync",
     "version:check": "node scripts/version.mjs check",

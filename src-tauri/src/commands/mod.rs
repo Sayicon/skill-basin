@@ -4,6 +4,11 @@ use tauri::State;
 
 use std::sync::Arc;
 
+use crate::core::agent_registry::{
+    add_custom_agent, default_agent_registry, read_agent_registry, remove_custom_agent,
+    resolve_all_adapters, resolve_with_registry, update_custom_agent, AdapterKind, AgentEntry,
+    AgentRegistry,
+};
 use crate::core::auto_update::{
     get_auto_update_config as get_auto_update_config_core, record_auto_update_triggered,
     run_auto_update_now as run_auto_update_now_core,
@@ -46,9 +51,8 @@ use crate::core::system_scheduler::{
     trigger_auto_update_task_now, uninstall_auto_update_task,
 };
 use crate::core::tool_adapters::{
-    adapter_by_key, adapters_sharing_project_skills_dir, is_builtin_tool_enabled,
-    is_tool_installed, load_tool_config, project_relative_skills_dir, resolve_default_path,
-    save_tool_config, supports_project_scope, CustomToolConfig, ToolConfig,
+    adapter_by_key, adapters_sharing_project_skills_dir, is_tool_installed, load_tool_config,
+    save_tool_config, CustomToolConfig, ToolConfig,
 };
 use uuid::Uuid;
 
@@ -130,6 +134,9 @@ pub struct ToolInfoDto {
     pub installed: bool,
     pub enabled: bool,
     pub is_custom: bool,
+    pub adapter_kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp_endpoint: Option<String>,
     pub skills_dir: String,
     pub project_skills_dir: String,
     pub supports_project_scope: bool,
@@ -149,6 +156,8 @@ struct RuntimeTool {
     installed: bool,
     enabled: bool,
     is_custom: bool,
+    adapter_kind: String,
+    mcp_endpoint: Option<String>,
     skills_dir: std::path::PathBuf,
     project_skills_dir: String,
     supports_project_scope: bool,
@@ -207,29 +216,62 @@ impl From<ToolConfigDto> for ToolConfig {
     }
 }
 
+/// The basin path setting written by `basin_initialize` — same key used by
+/// `basin_migrate_central`.
+const BASIN_PATH_SETTING: &str = "basin_path";
+
+fn configured_basin_dir(store: &SkillStore) -> anyhow::Result<Option<std::path::PathBuf>> {
+    Ok(store
+        .get_setting(BASIN_PATH_SETTING)?
+        .filter(|value| !value.trim().is_empty())
+        .map(std::path::PathBuf::from))
+}
+
+/// Thin DTO layer: resolves the merged adapter list (built-in enum + basin
+/// `agents.json` — see `core::agent_registry`) and maps it to `RuntimeTool`.
+/// No basin configured yet (pre-onboarding) falls back to the bundled
+/// default registry so the tool list still renders.
+///
+/// `config.custom_tools` (legacy per-machine SQLite storage, owned by
+/// `ToolsPage.tsx`) is layered on top for now — kept working on purpose
+/// (see DECISIONS.md D11 addendum) until FAZ 4 migrates that UI onto the
+/// basin-backed `agent_registry` custom entries and this loop is deleted.
 fn runtime_tools(store: &SkillStore, include_disabled: bool) -> anyhow::Result<Vec<RuntimeTool>> {
     let config = load_tool_config(store)?;
-    let mut tools = Vec::new();
+    let resolved = match configured_basin_dir(store)? {
+        Some(basin_dir) => resolve_all_adapters(&basin_dir, &config)?,
+        None => resolve_with_registry(&default_agent_registry(), &config),
+    };
 
-    for adapter in crate::core::tool_adapters::default_tool_adapters() {
-        let enabled = is_builtin_tool_enabled(&config, adapter.id.as_key());
-        if !include_disabled && !enabled {
+    let mut seen_keys = std::collections::HashSet::new();
+    let mut tools = Vec::new();
+    for adapter in resolved {
+        if !include_disabled && !adapter.enabled {
             continue;
         }
-        let detected = is_tool_installed(&adapter)?;
+        seen_keys.insert(adapter.key.clone());
+        let installed = adapter.enabled && adapter.is_installed();
         tools.push(RuntimeTool {
-            key: adapter.id.as_key().to_string(),
-            label: adapter.display_name.to_string(),
-            installed: enabled && detected,
-            enabled,
-            is_custom: false,
-            skills_dir: resolve_default_path(&adapter)?,
-            project_skills_dir: project_relative_skills_dir(&adapter).to_string(),
-            supports_project_scope: supports_project_scope(&adapter),
+            key: adapter.key,
+            label: adapter.display_name,
+            installed,
+            enabled: adapter.enabled,
+            is_custom: adapter.is_custom,
+            adapter_kind: match adapter.adapter_kind {
+                AdapterKind::Dir => "dir".to_string(),
+                AdapterKind::Mcp => "mcp".to_string(),
+            },
+            mcp_endpoint: adapter.mcp_endpoint,
+            supports_project_scope: adapter.project_skills_dir.is_some(),
+            skills_dir: adapter.skills_dir.unwrap_or_default(),
+            project_skills_dir: adapter.project_skills_dir.unwrap_or_default(),
         });
     }
 
     for custom in config.custom_tools {
+        if seen_keys.contains(&custom.key) {
+            continue; // an agents.json custom entry already covers this key
+        }
         if !include_disabled && !custom.enabled {
             continue;
         }
@@ -242,6 +284,8 @@ fn runtime_tools(store: &SkillStore, include_disabled: bool) -> anyhow::Result<V
             installed: custom.enabled && detected,
             enabled: custom.enabled,
             is_custom: true,
+            adapter_kind: "dir".to_string(),
+            mcp_endpoint: None,
             skills_dir,
             project_skills_dir: custom.project_skills_dir.unwrap_or_default(),
             supports_project_scope,
@@ -314,6 +358,82 @@ pub async fn set_tool_config(
     .map_err(format_anyhow_error)
 }
 
+fn require_basin_dir(store: &SkillStore) -> anyhow::Result<std::path::PathBuf> {
+    configured_basin_dir(store)?
+        .ok_or_else(|| anyhow::anyhow!("no basin configured — run basin_initialize first"))
+}
+
+/// Lists the basin's agents.json (vendored Tier2 + custom entries).
+#[tauri::command]
+pub async fn agent_registry_list(store: State<'_, SkillStore>) -> Result<AgentRegistry, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        read_agent_registry(&basin_dir)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Adds a custom agent entry to the basin's agents.json and commits it.
+/// Refuses Tier1 keys and keys that already exist.
+#[tauri::command]
+pub async fn agent_registry_add_custom(
+    store: State<'_, SkillStore>,
+    key: String,
+    entry: AgentEntry,
+) -> Result<AgentRegistry, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let registry = add_custom_agent(&basin_dir, &key, entry)?;
+        crate::core::basin::basin_commit_all(&basin_dir, &format!("add custom agent: {key}"))?;
+        Ok::<_, anyhow::Error>(registry)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Updates a custom agent entry. Refuses to touch vendored (non-custom)
+/// entries — those come from `scripts/vendor-agents.mjs`.
+#[tauri::command]
+pub async fn agent_registry_update_custom(
+    store: State<'_, SkillStore>,
+    key: String,
+    entry: AgentEntry,
+) -> Result<AgentRegistry, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let registry = update_custom_agent(&basin_dir, &key, entry)?;
+        crate::core::basin::basin_commit_all(&basin_dir, &format!("update custom agent: {key}"))?;
+        Ok::<_, anyhow::Error>(registry)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Removes a custom agent entry. Refuses to remove vendored entries.
+#[tauri::command]
+pub async fn agent_registry_remove_custom(
+    store: State<'_, SkillStore>,
+    key: String,
+) -> Result<AgentRegistry, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let registry = remove_custom_agent(&basin_dir, &key)?;
+        crate::core::basin::basin_commit_all(&basin_dir, &format!("remove custom agent: {key}"))?;
+        Ok::<_, anyhow::Error>(registry)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
 #[tauri::command]
 pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusDto, String> {
     let store = store.inner().clone();
@@ -328,6 +448,8 @@ pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusD
                 installed: tool.installed,
                 enabled: tool.enabled,
                 is_custom: tool.is_custom,
+                adapter_kind: tool.adapter_kind,
+                mcp_endpoint: tool.mcp_endpoint,
                 skills_dir: tool.skills_dir.to_string_lossy().to_string(),
                 project_skills_dir: tool.project_skills_dir,
                 supports_project_scope: tool.supports_project_scope,

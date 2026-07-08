@@ -91,6 +91,93 @@ fn saving_custom_tool_config_creates_enabled_skills_dir() {
     assert!(created_tool.installed);
 }
 
+fn make_basin(dir: &std::path::Path, store: &SkillStore) -> std::path::PathBuf {
+    let basin_dir = dir.join("basin");
+    crate::core::basin::basin_init(&basin_dir, "test", "2026-07-09").unwrap();
+    store
+        .set_setting("basin_path", &basin_dir.to_string_lossy())
+        .unwrap();
+    basin_dir
+}
+
+fn mcp_agent_entry() -> AgentEntry {
+    AgentEntry {
+        display_name: "My MCP Tool".to_string(),
+        adapter_kind: AdapterKind::Mcp,
+        global_skills_dir: None,
+        project_skills_dir: None,
+        detect: vec![],
+        mcp_endpoint: Some("stdio:my-tool".to_string()),
+        default_strategy: "auto".to_string(),
+        verified: true,
+        source: None,
+        custom: true,
+    }
+}
+
+#[test]
+fn require_basin_dir_errors_when_unconfigured() {
+    let (_dir, store) = make_store();
+    let err = require_basin_dir(&store).unwrap_err().to_string();
+    assert!(err.contains("no basin configured"));
+}
+
+#[test]
+fn custom_agent_crud_commits_to_basin_and_surfaces_in_runtime_tools() {
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+
+    let registry = add_custom_agent(&basin_dir, "my_mcp_tool", mcp_agent_entry()).unwrap();
+    crate::core::basin::basin_commit_all(&basin_dir, "add custom agent: my_mcp_tool").unwrap();
+    assert!(registry.adapters["my_mcp_tool"].custom);
+
+    let tools = runtime_tools(&store, true).unwrap();
+    let tool = tools
+        .iter()
+        .find(|tool| tool.key == "my_mcp_tool")
+        .expect("custom mcp agent must surface in runtime_tools");
+    assert!(tool.is_custom);
+    assert_eq!(tool.adapter_kind, "mcp");
+    assert_eq!(tool.mcp_endpoint.as_deref(), Some("stdio:my-tool"));
+
+    let mut renamed = mcp_agent_entry();
+    renamed.display_name = "Renamed".to_string();
+    update_custom_agent(&basin_dir, "my_mcp_tool", renamed).unwrap();
+    let after_update = read_agent_registry(&basin_dir).unwrap();
+    assert_eq!(after_update.adapters["my_mcp_tool"].display_name, "Renamed");
+
+    remove_custom_agent(&basin_dir, "my_mcp_tool").unwrap();
+    let after_remove = read_agent_registry(&basin_dir).unwrap();
+    assert!(!after_remove.adapters.contains_key("my_mcp_tool"));
+}
+
+#[test]
+fn agents_json_custom_entry_takes_precedence_over_legacy_sqlite_key_collision() {
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+    add_custom_agent(&basin_dir, "shared_key", mcp_agent_entry()).unwrap();
+
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![CustomToolConfig {
+                key: "shared_key".to_string(),
+                label: "Legacy SQLite Entry".to_string(),
+                skills_dir: dir.path().to_string_lossy().to_string(),
+                project_skills_dir: None,
+                enabled: true,
+            }],
+        },
+    )
+    .unwrap();
+
+    let tools = runtime_tools(&store, true).unwrap();
+    let matches: Vec<_> = tools.iter().filter(|t| t.key == "shared_key").collect();
+    assert_eq!(matches.len(), 1, "duplicate key must not appear twice");
+    assert_eq!(matches[0].adapter_kind, "mcp"); // agents.json entry won
+}
+
 #[test]
 fn normalize_scope_defaults_to_global_and_rejects_unknown() {
     assert_eq!(normalize_scope(None).unwrap(), "global");

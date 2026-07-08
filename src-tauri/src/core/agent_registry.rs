@@ -82,11 +82,27 @@ pub struct ResolvedAdapter {
     pub adapter_kind: AdapterKind,
     pub skills_dir: Option<PathBuf>,
     pub project_skills_dir: Option<String>,
+    /// Directories whose existence signals the tool itself is installed —
+    /// distinct from `skills_dir`, which may not exist yet even on an
+    /// installed tool (no skills used there so far). Falls back to
+    /// `skills_dir` when empty (custom entries with no `detect` list).
+    pub detect_dirs: Vec<PathBuf>,
     pub mcp_endpoint: Option<String>,
     pub default_strategy: String,
     pub is_custom: bool,
     pub verified: bool,
     pub enabled: bool,
+}
+
+impl ResolvedAdapter {
+    /// Best-effort "is this tool actually installed" check: any configured
+    /// detect dir exists, falling back to the skills dir itself.
+    pub fn is_installed(&self) -> bool {
+        if !self.detect_dirs.is_empty() {
+            return self.detect_dirs.iter().any(|dir| dir.exists());
+        }
+        self.skills_dir.as_deref().is_some_and(Path::exists)
+    }
 }
 
 pub fn default_agent_registry() -> AgentRegistry {
@@ -98,8 +114,7 @@ pub fn read_agent_registry(basin_dir: &Path) -> Result<AgentRegistry> {
     if !path.exists() {
         return Ok(default_agent_registry());
     }
-    let raw =
-        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let raw = std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     serde_json::from_str(&raw).with_context(|| format!("parse {}", path.display()))
 }
 
@@ -133,6 +148,10 @@ fn resolved_from_builtin(
         adapter_kind: AdapterKind::Dir,
         skills_dir: tool_adapters::resolve_default_path(adapter).ok(),
         project_skills_dir: Some(tool_adapters::project_relative_skills_dir(adapter).to_string()),
+        detect_dirs: tool_adapters::resolve_detect_path(adapter)
+            .ok()
+            .into_iter()
+            .collect(),
         mcp_endpoint: None,
         default_strategy: "auto".to_string(),
         is_custom: false,
@@ -145,12 +164,18 @@ fn resolved_from_entry(key: &str, entry: &AgentEntry) -> ResolvedAdapter {
         .global_skills_dir
         .as_deref()
         .and_then(|raw| expand_custom_tool_path(raw).ok());
+    let detect_dirs = entry
+        .detect
+        .iter()
+        .filter_map(|raw| expand_custom_tool_path(raw).ok())
+        .collect();
     ResolvedAdapter {
         key: key.to_string(),
         display_name: entry.display_name.clone(),
         adapter_kind: entry.adapter_kind,
         skills_dir,
         project_skills_dir: entry.project_skills_dir.clone(),
+        detect_dirs,
         mcp_endpoint: entry.mcp_endpoint.clone(),
         default_strategy: entry.default_strategy.clone(),
         is_custom: entry.custom,
@@ -159,16 +184,17 @@ fn resolved_from_entry(key: &str, entry: &AgentEntry) -> ResolvedAdapter {
     }
 }
 
-/// Merges built-in enum adapters with the basin's `agents.json`.
+/// Merges built-in enum adapters with an already-loaded agent registry.
+/// Pure (no I/O) — `resolve_all_adapters` is the file-backed wrapper; callers
+/// with no basin configured yet can pass `default_agent_registry()` directly.
 ///
 /// Resolution order: (1) Tier1 always built-in, agents.json ignored for
 /// those keys; (2) other built-in keys — agents.json wins if present;
 /// (3) remaining agents.json-only entries (Tier2 vendored + custom).
-pub fn resolve_all_adapters(
-    basin_dir: &Path,
+pub fn resolve_with_registry(
+    registry: &AgentRegistry,
     tool_config: &ToolConfig,
-) -> Result<Vec<ResolvedAdapter>> {
-    let registry = read_agent_registry(basin_dir)?;
+) -> Vec<ResolvedAdapter> {
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
@@ -199,7 +225,17 @@ pub fn resolve_all_adapters(
         out.push(resolved_from_entry(key, entry));
     }
 
-    Ok(out)
+    out
+}
+
+/// File-backed wrapper around [`resolve_with_registry`] — reads `agents.json`
+/// from `basin_dir` (falling back to the bundled default if missing).
+pub fn resolve_all_adapters(
+    basin_dir: &Path,
+    tool_config: &ToolConfig,
+) -> Result<Vec<ResolvedAdapter>> {
+    let registry = read_agent_registry(basin_dir)?;
+    Ok(resolve_with_registry(&registry, tool_config))
 }
 
 fn validate_custom_key(key: &str) -> Result<()> {

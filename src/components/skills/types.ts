@@ -89,6 +89,8 @@ export type ToolInfoDto = {
   installed: boolean
   enabled: boolean
   is_custom: boolean
+  adapter_kind: 'dir' | 'mcp'
+  mcp_endpoint?: string
   skills_dir: string
   project_skills_dir: string
   supports_project_scope: boolean
