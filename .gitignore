@@ -30,3 +30,8 @@ plans/
 .env
 
 bun.lock
+
+# frontend-quality skill artifacts
+temporary screenshots/
+serve.mjs
+screenshot.mjs

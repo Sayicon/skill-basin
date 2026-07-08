@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Skills Hub",
+  "productName": "SkillBasin",
   "version": "0.7.0",
-  "identifier": "com.qufei1993.skillshub",
+  "identifier": "dev.skillbasin.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Skills Hub",
+        "title": "SkillBasin",
         "width": 960,
         "height": 680,
         "resizable": true,

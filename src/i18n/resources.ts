@@ -1,7 +1,7 @@
 export const resources = {
   en: {
     translation: {
-      appName: 'Skills Hub',
+      appName: 'SkillBasin',
       unknown: 'unknown',
       languageShort: {
         en: 'EN',
@@ -588,7 +588,7 @@ export const resources = {
   },
   zh: {
     translation: {
-      appName: 'Skills Hub',
+      appName: 'SkillBasin',
       unknown: '未知',
       languageShort: {
         en: 'EN',
