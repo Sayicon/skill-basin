@@ -452,8 +452,11 @@ fn now_ms() -> i64 {
 }
 
 fn derive_name_from_repo_url(repo_url: &str) -> String {
+    // Local Windows paths use backslashes; split on both so a full absolute
+    // path never becomes the skill name (central_dir.join(abs_path) would
+    // silently replace the base and point at the source itself).
     let mut name = repo_url
-        .split('/')
+        .split(['/', '\\'])
         .next_back()
         .unwrap_or("skill")
         .to_string();
@@ -596,17 +599,23 @@ fn collect_skill_dirs(repo_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Relative subpath of `p` under `base`, always with forward slashes.
+/// Subpaths are used as git sparse-checkout patterns and stored in the DB,
+/// so Windows backslashes must never leak into them.
+fn rel_subpath(p: &Path, base: &Path) -> String {
+    p.strip_prefix(base)
+        .unwrap_or(p)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
 /// Scan all skill candidates in a repo directory, returning (name, relative_subpath) pairs.
 /// Used for auto-matching when updating legacy skills with missing source_subpath.
 fn scan_skill_candidates_in_dir(repo_dir: &Path) -> Vec<(String, String)> {
     let mut out = Vec::new();
     for p in collect_skill_dirs(repo_dir) {
         let (name, _) = extract_skill_info(&p, repo_dir);
-        let rel = p
-            .strip_prefix(repo_dir)
-            .unwrap_or(&p)
-            .to_string_lossy()
-            .to_string();
+        let rel = rel_subpath(&p, repo_dir);
         out.push((name, rel));
     }
     out
@@ -889,11 +898,7 @@ pub fn list_git_skills<R: tauri::Runtime>(
         } else if dir.is_dir() {
             for p in collect_skill_dirs(&dir) {
                 let (name, desc) = extract_skill_info(&p, &repo_dir);
-                let rel = p
-                    .strip_prefix(&repo_dir)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .to_string();
+                let rel = rel_subpath(&p, &repo_dir);
                 out.push(GitSkillCandidate {
                     name,
                     description: desc,
@@ -919,11 +924,7 @@ pub fn list_git_skills<R: tauri::Runtime>(
 
     for p in collect_skill_dirs(&repo_dir) {
         let (name, desc) = extract_skill_info(&p, &repo_dir);
-        let rel = p
-            .strip_prefix(&repo_dir)
-            .unwrap_or(&p)
-            .to_string_lossy()
-            .to_string();
+        let rel = rel_subpath(&p, &repo_dir);
         out.push(GitSkillCandidate {
             name,
             description: desc,
@@ -989,11 +990,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
                     continue;
                 }
                 let skill_md = p.join("SKILL.md");
-                let rel = p
-                    .strip_prefix(base_path)
-                    .unwrap_or(&p)
-                    .to_string_lossy()
-                    .to_string();
+                let rel = rel_subpath(&p, base_path);
                 if skill_md.exists() {
                     match parse_skill_md_with_reason(&skill_md) {
                         Ok((name, desc)) => {
@@ -1065,11 +1062,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
             if is_hidden_dir_name(&dir_name) || is_known_root_scan_dir(&dir_name) {
                 continue;
             }
-            let rel = p
-                .strip_prefix(base_path)
-                .unwrap_or(&p)
-                .to_string_lossy()
-                .to_string();
+            let rel = rel_subpath(&p, base_path);
             if p.join("SKILL.md").exists() {
                 match parse_skill_md_with_reason(&p.join("SKILL.md")) {
                     Ok((name, desc)) => {
@@ -1099,11 +1092,7 @@ pub fn list_local_skills(base_path: &Path) -> Result<Vec<LocalSkillCandidate>> {
                         if !sub_p.is_dir() {
                             continue;
                         }
-                        let sub_rel = sub_p
-                            .strip_prefix(base_path)
-                            .unwrap_or(&sub_p)
-                            .to_string_lossy()
-                            .to_string();
+                        let sub_rel = rel_subpath(&sub_p, base_path);
                         if sub_p.join("SKILL.md").exists() {
                             match parse_skill_md_with_reason(&sub_p.join("SKILL.md")) {
                                 Ok((name, desc)) => {

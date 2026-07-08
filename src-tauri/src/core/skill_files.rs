@@ -36,7 +36,7 @@ pub fn list_files(central_path: &Path) -> Result<Vec<FileEntry>> {
 
         let metadata = entry.metadata()?;
         entries.push(FileEntry {
-            path: relative.to_string_lossy().to_string(),
+            path: relative.to_string_lossy().replace('\\', "/"),
             size: metadata.len(),
         });
     }

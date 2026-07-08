@@ -815,7 +815,7 @@ fn collect_skill_dirs_scans_named_skill_containers_but_not_generic_dirs() {
             p.strip_prefix(dir.path())
                 .unwrap_or(p)
                 .to_string_lossy()
-                .to_string()
+                .replace('\\', "/")
         })
         .collect();
     assert_eq!(rels, vec!["agent-skills/visible-skill".to_string()]);

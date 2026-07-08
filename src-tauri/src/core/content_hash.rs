@@ -28,7 +28,8 @@ pub fn hash_dir(path: &Path) -> Result<String> {
             .path()
             .strip_prefix(path)
             .with_context(|| format!("strip prefix {:?}", entry.path()))?;
-        hasher.update(relative.to_string_lossy().as_bytes());
+        // Normalize separators so the same content hashes identically on every OS.
+        hasher.update(relative.to_string_lossy().replace('\\', "/").as_bytes());
 
         if entry.file_type().is_file() {
             let bytes = std::fs::read(entry.path())

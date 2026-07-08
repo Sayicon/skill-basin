@@ -78,7 +78,13 @@ fn debug_scheduler_uses_stable_runner_copy_for_target_debug_binary() {
     let executable = scheduler_executable_for_current_exe(&app).unwrap();
 
     if cfg!(debug_assertions) {
-        assert_eq!(executable, debug_dir.join("skills-hub-autoupdate-runner"));
+        assert_eq!(
+            executable,
+            debug_dir.join(format!(
+                "skillbasin-autoupdate-runner{}",
+                std::env::consts::EXE_SUFFIX
+            ))
+        );
         assert_eq!(std::fs::read(&executable).unwrap(), b"runner");
     } else {
         assert_eq!(executable, app);

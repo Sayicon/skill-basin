@@ -32,8 +32,11 @@ pub fn scheduler_executable_for_current_exe(current_exe: &Path) -> Result<PathBu
     #[cfg(debug_assertions)]
     {
         let path = current_exe.to_string_lossy();
-        if path.contains("/target/debug/") {
-            let runner = current_exe.with_file_name("skills-hub-autoupdate-runner");
+        if path.contains("/target/debug/") || path.contains(r"\target\debug\") {
+            let runner = current_exe.with_file_name(format!(
+                "skillbasin-autoupdate-runner{}",
+                std::env::consts::EXE_SUFFIX
+            ));
             std::fs::copy(current_exe, &runner)
                 .with_context(|| format!("copy auto update runner to {:?}", runner))?;
             return Ok(runner);

@@ -143,10 +143,11 @@ fn discovers_user_scoped_claude_plugin_skills() {
                 }}]
               }}
             }}"#,
-            standard_plugin.display(),
-            custom_plugin.display(),
-            root_plugin.display(),
-            project_plugin.display()
+            // JSON-safe on Windows: backslashes in paths are invalid JSON escapes.
+            standard_plugin.display().to_string().replace('\\', "/"),
+            custom_plugin.display().to_string().replace('\\', "/"),
+            root_plugin.display().to_string().replace('\\', "/"),
+            project_plugin.display().to_string().replace('\\', "/")
         ),
     )
     .unwrap();
@@ -230,7 +231,7 @@ fn ignores_duplicate_and_escaping_claude_plugin_skill_paths() {
                 }}]
               }}
             }}"#,
-            plugin.display()
+            plugin.display().to_string().replace('\\', "/")
         ),
     )
     .unwrap();
@@ -270,7 +271,7 @@ fn deduplicates_plugin_skill_already_present_in_claude_skills() {
                 }}]
               }}
             }}"#,
-            plugin.display()
+            plugin.display().to_string().replace('\\', "/")
         ),
     )
     .unwrap();
@@ -305,7 +306,7 @@ fn excludes_already_imported_claude_plugin_skill_source() {
                 }}]
               }}
             }}"#,
-            plugin.display()
+            plugin.display().to_string().replace('\\', "/")
         ),
     )
     .unwrap();
