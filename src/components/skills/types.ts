@@ -102,6 +102,28 @@ export type ToolStatusDto = {
   newly_installed: string[]
 }
 
+export type SkillVersionDto = {
+  label: string
+  addedAt: string
+  isLatest: boolean
+}
+
+export type PinTargetDto = {
+  enabled: boolean
+  strategy: string
+}
+
+export type PinEntryDto = {
+  skill: string
+  version: string
+  targets: Record<string, PinTargetDto>
+}
+
+export type MachinePinsDto = {
+  machine: string
+  pins: PinEntryDto[]
+}
+
 export type CustomToolConfigDto = {
   key: string
   label: string

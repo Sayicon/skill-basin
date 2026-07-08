@@ -2,7 +2,7 @@ import { memo, useState } from 'react'
 import { Box, Copy, Folder, Github, Power, RefreshCw, Tag, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
-import type { ManagedSkill, ToolOption } from './types'
+import type { MachinePinsDto, ManagedSkill, ToolOption } from './types'
 
 type GithubInfo = {
   label: string
@@ -12,6 +12,7 @@ type GithubInfo = {
 type SkillCardProps = {
   skill: ManagedSkill
   installedTools: ToolOption[]
+  machinePins: MachinePinsDto | null
   loading: boolean
   bulkMode: boolean
   bulkSelected: boolean
@@ -36,6 +37,7 @@ const MAX_VISIBLE_BADGES = 5
 const SkillCard = ({
   skill,
   installedTools,
+  machinePins,
   loading,
   bulkMode,
   bulkSelected,
@@ -75,6 +77,16 @@ const SkillCard = ({
       toast.success(t('copied'))
     } catch {
       toast.error(t('copyFailed'))
+    }
+  }
+
+  const pinnedVersionByTool = new Map<string, string>()
+  if (machinePins) {
+    for (const entry of machinePins.pins) {
+      if (entry.skill !== skill.name) continue
+      for (const [toolId, target] of Object.entries(entry.targets)) {
+        if (target.enabled) pinnedVersionByTool.set(toolId, entry.version)
+      }
     }
   }
 
@@ -215,6 +227,11 @@ const SkillCard = ({
             >
               <span className="status-badge" />
               {tool.label}
+              {pinnedVersionByTool.has(tool.id) ? (
+                <span className="tool-pill-version mono">
+                  {pinnedVersionByTool.get(tool.id)}
+                </span>
+              ) : null}
             </button>
           ))}
           {needsCollapse && !expanded ? (

@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { MessageCircle } from 'lucide-react'
 import type { TFunction } from 'i18next'
-import type { ManagedSkill, OnboardingPlan, ToolOption } from './types'
+import type { MachinePinsDto, ManagedSkill, OnboardingPlan, ToolOption } from './types'
 import SkillCard from './SkillCard'
 
 type GithubInfo = {
@@ -13,6 +13,7 @@ type SkillsListProps = {
   plan: OnboardingPlan | null
   visibleSkills: ManagedSkill[]
   installedTools: ToolOption[]
+  machinePins: MachinePinsDto | null
   loading: boolean
   bulkMode: boolean
   selectedSkillIds: string[]
@@ -37,6 +38,7 @@ const SkillsList = ({
   plan,
   visibleSkills,
   installedTools,
+  machinePins,
   loading,
   bulkMode,
   selectedSkillIds,
@@ -93,6 +95,7 @@ const SkillsList = ({
               key={skill.id}
               skill={skill}
               installedTools={installedTools}
+              machinePins={machinePins}
               loading={loading}
               bulkMode={bulkMode}
               bulkSelected={selectedSkillSet.has(skill.id)}

@@ -1,0 +1,211 @@
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Pin, PinOff } from 'lucide-react'
+import { toast } from 'sonner'
+import type { TFunction } from 'i18next'
+import type {
+  MachinePinsDto,
+  PinTargetDto,
+  SkillVersionDto,
+  ToolOption,
+} from './types'
+
+type SkillVersionsPanelProps = {
+  skillName: string
+  installedTools: ToolOption[]
+  invokeTauri: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+  formatRelative: (ms: number | null | undefined) => string
+  t: TFunction
+}
+
+type PinnedFor = {
+  version: string
+  target: PinTargetDto
+}
+
+const SkillVersionsPanel = ({
+  skillName,
+  installedTools,
+  invokeTauri,
+  t,
+}: SkillVersionsPanelProps) => {
+  const [versions, setVersions] = useState<SkillVersionDto[]>([])
+  const [pins, setPins] = useState<MachinePinsDto | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [pendingTool, setPendingTool] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [versionList, machinePins] = await Promise.all([
+        invokeTauri<SkillVersionDto[]>('list_skill_versions', { skillName }),
+        invokeTauri<MachinePinsDto>('get_machine_pins'),
+      ])
+      setVersions(versionList)
+      setPins(machinePins)
+    } catch {
+      setVersions([])
+      setPins(null)
+    } finally {
+      setLoading(false)
+    }
+  }, [invokeTauri, skillName])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const pinnedByTool = useMemo(() => {
+    const map = new Map<string, PinnedFor>()
+    if (!pins) return map
+    for (const entry of pins.pins) {
+      if (entry.skill !== skillName) continue
+      for (const [tool, target] of Object.entries(entry.targets)) {
+        map.set(tool, { version: entry.version, target })
+      }
+    }
+    return map
+  }, [pins, skillName])
+
+  const versionsByPinCount = useMemo(() => {
+    const counts = new Map<string, string[]>()
+    for (const [tool, pinned] of pinnedByTool) {
+      const list = counts.get(pinned.version) ?? []
+      list.push(tool)
+      counts.set(pinned.version, list)
+    }
+    return counts
+  }, [pinnedByTool])
+
+  const handlePinChange = useCallback(
+    async (tool: string, version: string) => {
+      setPendingTool(tool)
+      try {
+        const updated = await invokeTauri<MachinePinsDto>('set_skill_pin', {
+          skill: skillName,
+          version,
+          tool,
+          target: { enabled: true, strategy: 'auto' },
+        })
+        setPins(updated)
+        toast.success(t('versions.pinned', { tool, version }))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t('versions.pinFailed'))
+      } finally {
+        setPendingTool(null)
+      }
+    },
+    [invokeTauri, skillName, t],
+  )
+
+  const handleUnpin = useCallback(
+    async (tool: string) => {
+      setPendingTool(tool)
+      try {
+        const updated = await invokeTauri<MachinePinsDto>('unset_skill_pin', {
+          skill: skillName,
+          tool,
+        })
+        setPins(updated)
+        toast.success(t('versions.unpinned', { tool }))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t('versions.unpinFailed'))
+      } finally {
+        setPendingTool(null)
+      }
+    },
+    [invokeTauri, skillName, t],
+  )
+
+  if (loading) {
+    return (
+      <div className="versions-panel">
+        <div className="detail-loading">
+          <div className="detail-spinner" />
+          {t('versions.loading')}
+        </div>
+      </div>
+    )
+  }
+
+  if (versions.length === 0) {
+    return (
+      <div className="versions-panel">
+        <div className="versions-empty">{t('versions.empty')}</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="versions-panel">
+      <div className="versions-box">
+        <h5 className="versions-box-title">{t('versions.title')}</h5>
+        <ul className="versions-list">
+          {versions.map((version) => {
+            const pinnedTools = versionsByPinCount.get(version.label) ?? []
+            return (
+              <li className="versions-list-item" key={version.label}>
+                <span className="mono versions-label">{version.label}</span>
+                {version.isLatest ? (
+                  <span className="chip chip-accent">{t('versions.latest')}</span>
+                ) : null}
+                {pinnedTools.length > 0 ? (
+                  <span className="chip chip-pin" title={pinnedTools.join(', ')}>
+                    <Pin size={11} />
+                    {pinnedTools.length}
+                  </span>
+                ) : null}
+                <span className="versions-date">{version.addedAt}</span>
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+
+      <div className="versions-box">
+        <h5 className="versions-box-title">{t('versions.pinMatrix')}</h5>
+        <ul className="pin-matrix">
+          {installedTools.map((tool) => {
+            const pinned = pinnedByTool.get(tool.id)
+            const isPending = pendingTool === tool.id
+            return (
+              <li className="pin-matrix-row" key={tool.id}>
+                <span className="chip">{tool.label}</span>
+                <span className="pin-matrix-arrow">→</span>
+                <select
+                  className="pin-matrix-select mono"
+                  value={pinned?.version ?? ''}
+                  disabled={isPending}
+                  onChange={(event) => {
+                    const next = event.target.value
+                    if (next) void handlePinChange(tool.id, next)
+                  }}
+                >
+                  <option value="">{t('versions.off')}</option>
+                  {versions.map((version) => (
+                    <option key={version.label} value={version.label}>
+                      {version.label}
+                    </option>
+                  ))}
+                </select>
+                {pinned ? (
+                  <button
+                    type="button"
+                    className="icon-btn pin-matrix-unpin"
+                    disabled={isPending}
+                    onClick={() => void handleUnpin(tool.id)}
+                    aria-label={t('versions.unpin')}
+                    title={t('versions.unpin')}
+                  >
+                    <PinOff size={14} />
+                  </button>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+export default memo(SkillVersionsPanel)

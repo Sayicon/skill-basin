@@ -19,11 +19,13 @@ import remarkFrontmatter from 'remark-frontmatter'
 import remarkGfm from 'remark-gfm'
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
-import type { ManagedSkill, SkillFileEntry } from './types'
+import type { ManagedSkill, SkillFileEntry, ToolOption } from './types'
+import SkillVersionsPanel from './SkillVersionsPanel'
 
 // ─── Types ───────────────────────────────────────────
 type SkillDetailViewProps = {
   skill: ManagedSkill
+  installedTools: ToolOption[]
   onBack: () => void
   invokeTauri: <T>(command: string, args?: Record<string, unknown>) => Promise<T>
   formatRelative: (ms: number | null | undefined) => string
@@ -396,6 +398,7 @@ FileContentRenderer.displayName = 'FileContentRenderer'
 // ─── Main component ──────────────────────────────────
 const SkillDetailView = ({
   skill,
+  installedTools,
   onBack,
   invokeTauri,
   formatRelative,
@@ -589,6 +592,14 @@ const SkillDetailView = ({
           )}
         </div>
       </div>
+
+      <SkillVersionsPanel
+        skillName={skill.name}
+        installedTools={installedTools}
+        invokeTauri={invokeTauri}
+        formatRelative={formatRelative}
+        t={t}
+      />
     </div>
   )
 }

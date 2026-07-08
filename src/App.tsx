@@ -57,6 +57,7 @@ import type {
   GithubProxyConfigDto,
   InstallResultDto,
   LocalSkillCandidate,
+  MachinePinsDto,
   ManagedSkill,
   OnboardingPlan,
   OnlineSkillDto,
@@ -102,6 +103,7 @@ function App() {
     null,
   )
   const [managedSkills, setManagedSkills] = useState<ManagedSkill[]>([])
+  const [machinePins, setMachinePins] = useState<MachinePinsDto | null>(null)
   const [localPath, setLocalPath] = useState('')
   const [localName, setLocalName] = useState('')
   const [gitUrl, setGitUrl] = useState('')
@@ -341,12 +343,23 @@ function App() {
     }
   }, [invokeTauri])
 
+  const loadMachinePins = useCallback(async () => {
+    // Best effort — no basin configured yet is a normal, silent state here.
+    try {
+      const result = await invokeTauri<MachinePinsDto>('get_machine_pins')
+      setMachinePins(result)
+    } catch {
+      setMachinePins(null)
+    }
+  }, [invokeTauri])
+
   useEffect(() => {
     if (isTauri) {
       loadManagedSkills()
       loadTags()
+      loadMachinePins()
     }
-  }, [isTauri, loadManagedSkills, loadTags])
+  }, [isTauri, loadManagedSkills, loadTags, loadMachinePins])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1259,7 +1272,8 @@ function App() {
   const handleBackToList = useCallback(() => {
     setDetailSkill(null)
     setActiveView('myskills')
-  }, [])
+    void loadMachinePins()
+  }, [loadMachinePins])
 
   const handleExploreFilterChange = useCallback(
     (value: string) => {
@@ -3288,6 +3302,7 @@ function App() {
         {activeView === 'detail' && detailSkill ? (
           <SkillDetailView
             skill={detailSkill}
+            installedTools={installedTools}
             onBack={handleBackToList}
             invokeTauri={invokeTauri}
             formatRelative={formatRelative}
@@ -3320,6 +3335,7 @@ function App() {
               plan={plan}
               visibleSkills={visibleSkills}
               installedTools={installedTools}
+              machinePins={machinePins}
               loading={loading}
               bulkMode={bulkMode}
               selectedSkillIds={bulkSelectedIds}
