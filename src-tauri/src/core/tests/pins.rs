@@ -246,3 +246,134 @@ fn disabled_target_counts_as_unpinned() {
     assert!(matches!(&plan[0], PlanAction::Remove { .. }));
     drop(basin);
 }
+
+#[test]
+fn set_pin_creates_and_installs_on_first_call() {
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    let (pins, results) = set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "1.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+
+    assert_eq!(pins.pins.len(), 1);
+    assert_eq!(pins.pins[0].version, "1.0.0");
+    assert!(results.iter().all(|r| r.ok));
+    assert!(claude.path().join("demo").join("SKILL.md").exists());
+}
+
+#[test]
+fn set_pin_moves_tool_off_previous_version_of_same_skill() {
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "1.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+    let (pins, results) = set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "2.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+
+    // Only one entry for "demo" survives — the 1.0.0 one is pruned (empty targets).
+    let demo_entries: Vec<_> = pins.pins.iter().filter(|e| e.skill == "demo").collect();
+    assert_eq!(demo_entries.len(), 1);
+    assert_eq!(demo_entries[0].version, "2.0.0");
+    assert!(results.iter().all(|r| r.ok));
+    let content = fs::read_to_string(claude.path().join("demo").join("SKILL.md")).unwrap();
+    assert_eq!(content, "demo v2");
+}
+
+#[test]
+fn set_pin_lets_two_tools_pin_different_versions_of_same_skill() {
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let cursor = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude), ("cursor", &cursor)]);
+
+    set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "1.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+    let (pins, _) = set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "2.0.0",
+        "cursor",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+
+    let demo_entries: Vec<_> = pins.pins.iter().filter(|e| e.skill == "demo").collect();
+    assert_eq!(demo_entries.len(), 2);
+    assert_eq!(
+        fs::read_to_string(claude.path().join("demo").join("SKILL.md")).unwrap(),
+        "demo v1"
+    );
+    assert_eq!(
+        fs::read_to_string(cursor.path().join("demo").join("SKILL.md")).unwrap(),
+        "demo v2"
+    );
+}
+
+#[test]
+fn unset_pin_removes_the_managed_install() {
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "1.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+    assert!(claude.path().join("demo").exists());
+
+    let (pins, results) = unset_pin(basin.path(), "m", "demo", "claude_code", &dirs).unwrap();
+    assert!(pins.pins.iter().all(|e| e.skill != "demo"));
+    assert!(results.iter().all(|r| r.ok));
+    assert!(!claude.path().join("demo").exists());
+}
+
+#[test]
+fn read_machine_pins_or_empty_returns_empty_set_when_missing() {
+    let basin = fixture_basin();
+    let pins = read_machine_pins_or_empty(basin.path(), "never-seen").unwrap();
+    assert_eq!(pins.machine, "never-seen");
+    assert!(pins.pins.is_empty());
+}

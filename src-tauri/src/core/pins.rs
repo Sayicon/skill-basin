@@ -123,6 +123,89 @@ pub fn write_machine_pins(basin_dir: &Path, pins: &MachinePins) -> Result<()> {
     crate::core::basin::write_json_pretty(&path, pins)
 }
 
+/// Like [`read_machine_pins`], but a missing pins.json (first pin ever set
+/// on this machine) is an empty pin set rather than an error.
+pub fn read_machine_pins_or_empty(basin_dir: &Path, machine: &str) -> Result<MachinePins> {
+    if !machine_pins_path(basin_dir, machine).exists() {
+        return Ok(MachinePins {
+            machine: machine.to_string(),
+            pins: Vec::new(),
+        });
+    }
+    read_machine_pins(basin_dir, machine)
+}
+
+/// Pins `tool` to `skill`@`version` (moving it off any other version of the
+/// same skill it was pinned to), writes pins.json, and immediately
+/// re-applies the sync plan so the change takes effect on disk.
+pub fn set_pin(
+    basin_dir: &Path,
+    machine: &str,
+    skill: &str,
+    version: &str,
+    tool: &str,
+    target: PinTarget,
+    tool_dirs: &BTreeMap<String, PathBuf>,
+) -> Result<(MachinePins, Vec<ApplyResult>)> {
+    let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
+
+    for entry in pins.pins.iter_mut() {
+        if entry.skill == skill && entry.version != version {
+            entry.targets.remove(tool);
+        }
+    }
+    pins.pins
+        .retain(|entry| !(entry.skill == skill && entry.targets.is_empty()));
+
+    match pins
+        .pins
+        .iter_mut()
+        .find(|entry| entry.skill == skill && entry.version == version)
+    {
+        Some(entry) => {
+            entry.targets.insert(tool.to_string(), target);
+        }
+        None => {
+            let mut targets = BTreeMap::new();
+            targets.insert(tool.to_string(), target);
+            pins.pins.push(PinEntry {
+                skill: skill.to_string(),
+                version: version.to_string(),
+                targets,
+            });
+        }
+    }
+
+    write_machine_pins(basin_dir, &pins)?;
+    let plan = plan_sync(&pins, tool_dirs)?;
+    let results = apply_plan(basin_dir, &plan)?;
+    Ok((pins, results))
+}
+
+/// Removes `tool`'s pin for `skill` (whichever version it was pinned to)
+/// and re-applies — the managed install is removed from disk.
+pub fn unset_pin(
+    basin_dir: &Path,
+    machine: &str,
+    skill: &str,
+    tool: &str,
+    tool_dirs: &BTreeMap<String, PathBuf>,
+) -> Result<(MachinePins, Vec<ApplyResult>)> {
+    let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
+    for entry in pins.pins.iter_mut() {
+        if entry.skill == skill {
+            entry.targets.remove(tool);
+        }
+    }
+    pins.pins
+        .retain(|entry| !(entry.skill == skill && entry.targets.is_empty()));
+
+    write_machine_pins(basin_dir, &pins)?;
+    let plan = plan_sync(&pins, tool_dirs)?;
+    let results = apply_plan(basin_dir, &plan)?;
+    Ok((pins, results))
+}
+
 /// Path of the sibling manifest for a given target directory.
 pub fn manifest_path_for(target: &Path) -> PathBuf {
     let mut name = target

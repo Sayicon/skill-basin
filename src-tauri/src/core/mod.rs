@@ -10,6 +10,7 @@ pub mod git_fetcher;
 pub mod github_download;
 pub mod github_search;
 pub mod installer;
+pub mod machine;
 pub mod network_proxy;
 pub mod onboarding;
 pub mod pins;

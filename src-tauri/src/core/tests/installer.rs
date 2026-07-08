@@ -291,6 +291,37 @@ fn installs_local_skill_and_updates_from_source() {
 }
 
 #[test]
+fn install_local_skill_snapshots_into_configured_basin_immediately() {
+    let app = tauri::test::mock_app();
+    let (_dir, store) = make_store();
+
+    let central_root = tempfile::tempdir().unwrap();
+    set_central_path(&store, central_root.path());
+
+    let basin_dir = tempfile::tempdir().unwrap();
+    crate::core::basin::basin_init(basin_dir.path(), "test", "2026-07-09").unwrap();
+    store
+        .set_setting("basin_path", &basin_dir.path().to_string_lossy())
+        .unwrap();
+
+    let source = tempfile::tempdir().unwrap();
+    fs::write(source.path().join("SKILL.md"), b"---\nname: fresh\n---\n").unwrap();
+
+    let res = super::install_local_skill(
+        app.handle(),
+        &store,
+        source.path(),
+        Some("fresh".to_string()),
+    )
+    .unwrap();
+
+    // A version must exist right away — not only after the first update.
+    let meta = crate::core::basin::read_skill_meta(basin_dir.path(), &res.name).unwrap();
+    assert_eq!(meta.versions.len(), 1);
+    assert!(!meta.latest.is_empty());
+}
+
+#[test]
 fn lists_and_installs_git_skills_without_network() {
     let app = tauri::test::mock_app();
     let (_dir, store) = make_store();

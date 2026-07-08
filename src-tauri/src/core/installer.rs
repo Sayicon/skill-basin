@@ -28,6 +28,33 @@ pub struct InstallResult {
     pub content_hash: Option<String>,
 }
 
+/// Snapshots `central_path` into the configured basin as a new version, if
+/// one is configured. Used both on initial install (so a skill always has
+/// at least one version to pin/show) and on update (new content = new
+/// version, existing pins untouched). Best effort: a basin problem must
+/// never fail the install/update itself.
+fn snapshot_into_basin_if_configured(store: &SkillStore, name: &str, central_path: &Path) {
+    let Ok(Some(basin_path)) = store.get_setting("basin_path") else {
+        return;
+    };
+    let basin_path = basin_path.trim().to_string();
+    if basin_path.is_empty() {
+        return;
+    }
+    let basin_dir = PathBuf::from(&basin_path);
+    let date = super::basin::today_utc_date();
+    match super::basin::record_update_as_version(&basin_dir, name, central_path, None, &date) {
+        Ok(Some((label, _))) => {
+            let message = format!("update {name} -> {label}");
+            if let Err(err) = super::basin::basin_commit_all(&basin_dir, &message) {
+                log::warn!("[basin] commit after snapshot failed: {err:#}");
+            }
+        }
+        Ok(None) => {}
+        Err(err) => log::warn!("[basin] snapshot failed for {name}: {err:#}"),
+    }
+}
+
 pub fn install_local_skill<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     store: &SkillStore,
@@ -79,6 +106,7 @@ pub fn install_local_skill<R: tauri::Runtime>(
     };
 
     store.upsert_skill(&record)?;
+    snapshot_into_basin_if_configured(store, &record.name, &central_path);
 
     Ok(InstallResult {
         skill_id: record.id,
@@ -301,6 +329,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
     };
 
     store.upsert_skill(&record)?;
+    snapshot_into_basin_if_configured(store, &record.name, &central_path);
 
     Ok(InstallResult {
         skill_id: record.id,
@@ -843,35 +872,10 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
         }
     }
 
-    // Snapshot the updated content into the versioned basin, when one is
-    // configured. Updates only ADD versions there — pins are never moved, so
-    // a tool pinned to an older version is unaffected by this refresh.
-    // Best effort: a basin problem must never fail the update itself.
-    if let Ok(Some(basin_path)) = store.get_setting("basin_path") {
-        let basin_path = basin_path.trim().to_string();
-        if !basin_path.is_empty() {
-            let basin_dir = PathBuf::from(&basin_path);
-            let date = super::basin::today_utc_date();
-            match super::basin::record_update_as_version(
-                &basin_dir,
-                &record.name,
-                &central_path,
-                None,
-                &date,
-            ) {
-                Ok(Some((label, _))) => {
-                    let message = format!("update {} -> {}", record.name, label);
-                    if let Err(err) = super::basin::basin_commit_all(&basin_dir, &message) {
-                        log::warn!("[basin] commit after update failed: {:#}", err);
-                    }
-                }
-                Ok(None) => {}
-                Err(err) => {
-                    log::warn!("[basin] snapshot failed for {}: {:#}", record.name, err)
-                }
-            }
-        }
-    }
+    // Snapshot the updated content into the versioned basin — pins are never
+    // moved, so a tool pinned to an older version is unaffected by this
+    // refresh.
+    snapshot_into_basin_if_configured(store, &record.name, &central_path);
 
     Ok(UpdateResult {
         skill_id: record.id,
@@ -1271,6 +1275,7 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
         status: "ok".to_string(),
     };
     store.upsert_skill(&record)?;
+    snapshot_into_basin_if_configured(store, &record.name, &central_path);
 
     Ok(InstallResult {
         skill_id: record.id,

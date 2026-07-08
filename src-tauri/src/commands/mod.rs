@@ -16,6 +16,7 @@ use crate::core::auto_update::{
     AutoUpdateIntervalUnit, AutoUpdateProgressSnapshot, AutoUpdateRunResult, AutoUpdateSchedule,
     AutoUpdateScheduleType,
 };
+use crate::core::basin::read_skill_meta;
 use crate::core::cache_cleanup::{
     cleanup_git_cache_dirs, get_git_cache_cleanup_days as get_git_cache_cleanup_days_core,
     get_git_cache_ttl_secs as get_git_cache_ttl_secs_core,
@@ -32,6 +33,7 @@ use crate::core::installer::{
     install_local_skill_from_selection, list_git_skills, list_local_skills,
     update_managed_skill_from_source, GitSkillCandidate, InstallResult, LocalSkillCandidate,
 };
+use crate::core::machine::current_machine_id;
 use crate::core::network_proxy::{
     get_github_proxy_config as get_github_proxy_config_core,
     get_github_proxy_url as get_github_proxy_url_core,
@@ -39,6 +41,7 @@ use crate::core::network_proxy::{
     set_github_proxy_url as set_github_proxy_url_core, GithubProxyConfig,
 };
 use crate::core::onboarding::{build_onboarding_plan, OnboardingPlan};
+use crate::core::pins::{read_machine_pins_or_empty, set_pin, unset_pin, MachinePins, PinTarget};
 use crate::core::skill_store::{SkillStore, SkillTargetRecord};
 use crate::core::skills_search::{
     search_skills_online as search_skills_online_core, OnlineSkillResult,
@@ -428,6 +431,120 @@ pub async fn agent_registry_remove_custom(
         let registry = remove_custom_agent(&basin_dir, &key)?;
         crate::core::basin::basin_commit_all(&basin_dir, &format!("remove custom agent: {key}"))?;
         Ok::<_, anyhow::Error>(registry)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillVersionDto {
+    pub label: String,
+    pub added_at: String,
+    pub is_latest: bool,
+}
+
+/// Every version of `skill_name` recorded in the basin, newest first.
+#[tauri::command]
+pub async fn list_skill_versions(
+    store: State<'_, SkillStore>,
+    skill_name: String,
+) -> Result<Vec<SkillVersionDto>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let meta = read_skill_meta(&basin_dir, &skill_name)?;
+        let latest = meta.latest.clone();
+        let mut versions: Vec<SkillVersionDto> = meta
+            .versions
+            .into_iter()
+            .map(|(label, info)| SkillVersionDto {
+                is_latest: label == latest,
+                label,
+                added_at: info.added_at,
+            })
+            .collect();
+        versions.sort_by(|a, b| b.added_at.cmp(&a.added_at));
+        Ok::<_, anyhow::Error>(versions)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+fn resolved_tool_dirs(
+    basin_dir: &std::path::Path,
+    tool_config: &ToolConfig,
+) -> anyhow::Result<std::collections::BTreeMap<String, std::path::PathBuf>> {
+    Ok(resolve_all_adapters(basin_dir, tool_config)?
+        .into_iter()
+        .filter_map(|adapter| adapter.skills_dir.map(|dir| (adapter.key, dir)))
+        .collect())
+}
+
+/// This machine's current pins (which version of which skill goes to which
+/// tool) — the desired-state lockfile the sync planner diffs against disk.
+#[tauri::command]
+pub async fn get_machine_pins(store: State<'_, SkillStore>) -> Result<MachinePins, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let machine = current_machine_id(&store)?;
+        read_machine_pins_or_empty(&basin_dir, &machine)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Pins `tool` to `skill`@`version` — moves it off whatever version of the
+/// same skill it was pinned to before — and syncs immediately.
+#[tauri::command]
+pub async fn set_skill_pin(
+    store: State<'_, SkillStore>,
+    skill: String,
+    version: String,
+    tool: String,
+    target: PinTarget,
+) -> Result<MachinePins, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let machine = current_machine_id(&store)?;
+        let config = load_tool_config(&store)?;
+        let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
+        let (pins, _results) = set_pin(
+            &basin_dir, &machine, &skill, &version, &tool, target, &tool_dirs,
+        )?;
+        crate::core::basin::basin_commit_all(
+            &basin_dir,
+            &format!("pin {skill}@{version} -> {tool}"),
+        )?;
+        Ok::<_, anyhow::Error>(pins)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Removes `tool`'s pin for `skill` (whichever version) and syncs — the
+/// managed install disappears from that tool's directory.
+#[tauri::command]
+pub async fn unset_skill_pin(
+    store: State<'_, SkillStore>,
+    skill: String,
+    tool: String,
+) -> Result<MachinePins, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let machine = current_machine_id(&store)?;
+        let config = load_tool_config(&store)?;
+        let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
+        let (pins, _results) = unset_pin(&basin_dir, &machine, &skill, &tool, &tool_dirs)?;
+        crate::core::basin::basin_commit_all(&basin_dir, &format!("unpin {skill} -> {tool}"))?;
+        Ok::<_, anyhow::Error>(pins)
     })
     .await
     .map_err(|err| err.to_string())?
