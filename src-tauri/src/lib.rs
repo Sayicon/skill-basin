@@ -20,10 +20,26 @@ fn init_store<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> anyhow::Result<Sk
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    #[cfg_attr(not(all(debug_assertions, feature = "mcp-bridge")), allow(unused_mut))]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_updater::Builder::new().build());
+
+    // Opt-in dev tool: lets the tauri-mcp-server MCP tool inspect/drive this
+    // app's webview and IPC during development. Off by default — regular
+    // builds/CI never compile tauri-plugin-mcp-bridge or its deps. Enable
+    // with: cargo tauri dev --features mcp-bridge. Bound to localhost only.
+    #[cfg(all(debug_assertions, feature = "mcp-bridge"))]
+    {
+        builder = builder.plugin(
+            tauri_plugin_mcp_bridge::Builder::new()
+                .bind_address("127.0.0.1")
+                .build(),
+        );
+    }
+
+    builder
         .setup(|app| {
             app.handle().plugin(
                 tauri_plugin_log::Builder::default()
