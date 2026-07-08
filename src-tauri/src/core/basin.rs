@@ -56,7 +56,7 @@ pub struct VersionInfo {
     pub added_at: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SecurityInfo {
     /// "clean" | "flagged" | "unscanned"
@@ -66,6 +66,16 @@ pub struct SecurityInfo {
     pub license: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scanned_at: Option<String>,
+}
+
+impl Default for SecurityInfo {
+    fn default() -> Self {
+        Self {
+            scan_status: default_scan_status(),
+            license: None,
+            scanned_at: None,
+        }
+    }
 }
 
 fn default_scan_status() -> String {
@@ -97,19 +107,56 @@ pub struct MigrationReport {
 /// `YYYY-MM-DD.<hash4>` where hash4 is the first 4 hex chars of the content
 /// hash (after the algorithm prefix, if any).
 pub fn version_label(semver: Option<&str>, date: &str, content_hash: &str) -> String {
-    let _ = (semver, date, content_hash);
-    unimplemented!("FAZ 1B")
+    if let Some(v) = semver {
+        return v.to_string();
+    }
+    let raw = content_hash
+        .split_once(':')
+        .map_or(content_hash, |(_, rest)| rest);
+    let hash4: String = raw.chars().take(4).collect();
+    format!("{}.{}", date, hash4)
 }
 
-/// Initialize a basin directory: manifest + git repo. Idempotent.
+/// Initialize a basin directory: manifest + git repo. Idempotent — an
+/// existing manifest is returned untouched.
 pub fn basin_init(basin_dir: &Path, name: &str, created_at: &str) -> Result<BasinManifest> {
-    let _ = (basin_dir, name, created_at);
-    unimplemented!("FAZ 1B")
+    std::fs::create_dir_all(basin_dir)
+        .with_context(|| format!("create basin dir {:?}", basin_dir))?;
+
+    if !basin_dir.join(".git").exists() {
+        git2::Repository::init(basin_dir)
+            .with_context(|| format!("git init basin {:?}", basin_dir))?;
+    }
+
+    let manifest_path = basin_dir.join(BASIN_MANIFEST_FILE);
+    if manifest_path.exists() {
+        return read_manifest(basin_dir);
+    }
+
+    let manifest = BasinManifest {
+        schema_version: BASIN_SCHEMA_VERSION,
+        name: name.to_string(),
+        created_at: created_at.to_string(),
+    };
+    write_json_pretty(&manifest_path, &manifest)?;
+    std::fs::create_dir_all(basin_dir.join("skills"))
+        .with_context(|| format!("create skills dir in {:?}", basin_dir))?;
+    Ok(manifest)
 }
 
 pub fn read_manifest(basin_dir: &Path) -> Result<BasinManifest> {
-    let _ = basin_dir;
-    unimplemented!("FAZ 1B")
+    let path = basin_dir.join(BASIN_MANIFEST_FILE);
+    let content = std::fs::read_to_string(&path)
+        .with_context(|| format!("read basin manifest {:?}", path))?;
+    serde_json::from_str(&content).with_context(|| format!("parse basin manifest {:?}", path))
+}
+
+fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| format!("create dir {:?}", parent))?;
+    }
+    let json = serde_json::to_string_pretty(value).context("serialize json")?;
+    std::fs::write(path, json).with_context(|| format!("write {:?}", path))
 }
 
 pub fn skill_dir(basin_dir: &Path, id: &str) -> PathBuf {
@@ -128,8 +175,8 @@ pub fn read_skill_meta(basin_dir: &Path, id: &str) -> Result<SkillMeta> {
 }
 
 pub fn write_skill_meta(basin_dir: &Path, meta: &SkillMeta) -> Result<()> {
-    let _ = (basin_dir, meta);
-    unimplemented!("FAZ 1B")
+    let path = skill_dir(basin_dir, &meta.id).join(SKILL_META_FILE);
+    write_json_pretty(&path, meta)
 }
 
 /// Copy `src_dir` into the basin as a new version of `id` and update the
@@ -142,8 +189,46 @@ pub fn add_skill_version(
     added_at: &str,
     source: Option<SkillSource>,
 ) -> Result<VersionInfo> {
-    let _ = (basin_dir, id, src_dir, label, added_at, source);
-    unimplemented!("FAZ 1B")
+    let mut meta = match read_skill_meta(basin_dir, id) {
+        Ok(existing) => existing,
+        Err(_) => SkillMeta {
+            id: id.to_string(),
+            display_name: id.to_string(),
+            source: source.clone().unwrap_or(SkillSource {
+                source_type: "local".to_string(),
+                ..Default::default()
+            }),
+            tags: Vec::new(),
+            latest: label.to_string(),
+            versions: BTreeMap::new(),
+            security: SecurityInfo::default(),
+        },
+    };
+
+    let target = version_dir(basin_dir, id, label);
+    if meta.versions.contains_key(label) || target.exists() {
+        anyhow::bail!("version {} of skill {} already exists in basin", label, id);
+    }
+
+    crate::core::sync_engine::copy_dir_recursive(src_dir, &target)
+        .with_context(|| format!("copy skill version into {:?}", target))?;
+    let content_hash = format!(
+        "sha256:{}",
+        crate::core::content_hash::hash_dir(&target)
+            .with_context(|| format!("hash skill version {:?}", target))?
+    );
+
+    let info = VersionInfo {
+        content_hash,
+        added_at: added_at.to_string(),
+    };
+    meta.versions.insert(label.to_string(), info.clone());
+    meta.latest = label.to_string();
+    if let Some(source) = source {
+        meta.source = source;
+    }
+    write_skill_meta(basin_dir, &meta)?;
+    Ok(info)
 }
 
 /// Migrate a flat central repo (one directory per skill) into basin layout.
@@ -155,8 +240,38 @@ pub fn migrate_central_to_basin(
     sources: &BTreeMap<String, SkillSource>,
     date: &str,
 ) -> Result<MigrationReport> {
-    let _ = (central_dir, basin_dir, sources, date);
-    unimplemented!("FAZ 1B")
+    let mut report = MigrationReport::default();
+    let entries = std::fs::read_dir(central_dir)
+        .with_context(|| format!("read central repo {:?}", central_dir))?;
+
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if !path.is_dir() {
+            continue; // loose files at the central root are not skills
+        }
+        let Some(id) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
+            continue;
+        };
+        if read_skill_meta(basin_dir, &id).is_ok() {
+            report.skipped.push(id);
+            continue;
+        }
+
+        let src_hash = format!(
+            "sha256:{}",
+            crate::core::content_hash::hash_dir(&path)
+                .with_context(|| format!("hash central skill {:?}", path))?
+        );
+        let label = version_label(None, date, &src_hash);
+        let source = sources.get(&id).cloned();
+        add_skill_version(basin_dir, &id, &path, &label, date, source)?;
+        report.migrated.push(id);
+    }
+
+    report.migrated.sort();
+    report.skipped.sort();
+    Ok(report)
 }
 
 #[cfg(test)]

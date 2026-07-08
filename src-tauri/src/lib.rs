@@ -1,5 +1,7 @@
 mod commands;
-mod core;
+// Public so the core (basin, sync engine, installer) can be reused by
+// non-Tauri consumers of this crate as a plain Rust library.
+pub mod core;
 
 use std::sync::Arc;
 
