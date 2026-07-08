@@ -1,3 +1,4 @@
+pub mod agent_registry;
 pub mod auto_update;
 pub mod basin;
 pub mod cache_cleanup;

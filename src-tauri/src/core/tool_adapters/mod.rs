@@ -175,7 +175,7 @@ pub fn is_valid_custom_tool_key(key: &str) -> bool {
         && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '-')
 }
 
-fn expand_custom_tool_path(input: &str) -> Result<PathBuf> {
+pub(crate) fn expand_custom_tool_path(input: &str) -> Result<PathBuf> {
     let trimmed = input.trim();
     if trimmed == "~" {
         return dirs::home_dir().context("failed to resolve home directory");
