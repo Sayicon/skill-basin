@@ -211,7 +211,7 @@ pub fn plan_sync(
         }
     }
 
-    for ((tool, skill), _manifest) in &managed {
+    for (tool, skill) in managed.keys() {
         if !desired.contains_key(&(tool.clone(), skill.clone())) {
             plan.push(PlanAction::Remove {
                 skill: skill.clone(),
