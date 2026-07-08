@@ -843,6 +843,36 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
         }
     }
 
+    // Snapshot the updated content into the versioned basin, when one is
+    // configured. Updates only ADD versions there — pins are never moved, so
+    // a tool pinned to an older version is unaffected by this refresh.
+    // Best effort: a basin problem must never fail the update itself.
+    if let Ok(Some(basin_path)) = store.get_setting("basin_path") {
+        let basin_path = basin_path.trim().to_string();
+        if !basin_path.is_empty() {
+            let basin_dir = PathBuf::from(&basin_path);
+            let date = super::basin::today_utc_date();
+            match super::basin::record_update_as_version(
+                &basin_dir,
+                &record.name,
+                &central_path,
+                None,
+                &date,
+            ) {
+                Ok(Some((label, _))) => {
+                    let message = format!("update {} -> {}", record.name, label);
+                    if let Err(err) = super::basin::basin_commit_all(&basin_dir, &message) {
+                        log::warn!("[basin] commit after update failed: {:#}", err);
+                    }
+                }
+                Ok(None) => {}
+                Err(err) => {
+                    log::warn!("[basin] snapshot failed for {}: {:#}", record.name, err)
+                }
+            }
+        }
+    }
+
     Ok(UpdateResult {
         skill_id: record.id,
         name: record.name,

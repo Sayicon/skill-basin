@@ -1766,6 +1766,82 @@ pub fn cancel_current_operation(cancel: State<'_, Arc<CancelToken>>) -> Result<(
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BasinMigrationDto {
+    pub migrated: Vec<String>,
+    pub skipped: Vec<String>,
+}
+
+/// Initialize (or open) the versioned skill basin at `path` and remember it
+/// in settings so future skill updates snapshot into it automatically.
+#[tauri::command]
+pub async fn basin_initialize(
+    store: State<'_, SkillStore>,
+    path: String,
+    name: String,
+) -> Result<String, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = std::path::PathBuf::from(&path);
+        let date = crate::core::basin::today_utc_date();
+        crate::core::basin::basin_init(&basin_dir, &name, &date)?;
+        store.set_setting("basin_path", &path)?;
+        Ok::<_, anyhow::Error>(path)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Migrate the flat central repo into the configured basin. Every skill
+/// becomes an initial version; already-migrated skills are skipped.
+#[tauri::command]
+pub async fn basin_migrate_central(
+    app: tauri::AppHandle,
+    store: State<'_, SkillStore>,
+) -> Result<BasinMigrationDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_path = store
+            .get_setting("basin_path")?
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("no basin configured — run basin_initialize first"))?;
+        let basin_dir = std::path::PathBuf::from(basin_path);
+        let central_dir = resolve_central_repo_path(&app, &store)?;
+
+        // Carry source info from the store where we have it.
+        let mut sources = std::collections::BTreeMap::new();
+        for skill in store.list_skills()? {
+            sources.insert(
+                skill.name.clone(),
+                crate::core::basin::SkillSource {
+                    source_type: skill.source_type.clone(),
+                    url: skill.source_ref.clone(),
+                    subpath: skill.source_subpath.clone(),
+                    git_ref: None,
+                },
+            );
+        }
+
+        let date = crate::core::basin::today_utc_date();
+        let report = crate::core::basin::migrate_central_to_basin(
+            &central_dir,
+            &basin_dir,
+            &sources,
+            &date,
+        )?;
+        crate::core::basin::basin_commit_all(&basin_dir, "migrate central repo into basin")?;
+        Ok::<_, anyhow::Error>(BasinMigrationDto {
+            migrated: report.migrated,
+            skipped: report.skipped,
+        })
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
 #[cfg(test)]
 #[path = "tests/commands.rs"]
 mod tests;

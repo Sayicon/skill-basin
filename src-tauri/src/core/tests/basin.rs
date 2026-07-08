@@ -234,6 +234,13 @@ fn migrate_central_moves_skills_as_initial_versions() {
 }
 
 #[test]
+fn unix_days_convert_to_civil_dates() {
+    assert_eq!(unix_days_to_date(0), "1970-01-01");
+    assert_eq!(unix_days_to_date(19723), "2024-01-01");
+    assert_eq!(unix_days_to_date(11016), "2000-02-29"); // leap day
+}
+
+#[test]
 fn basin_commit_all_commits_changes_and_skips_clean_tree() {
     let basin = tempfile::tempdir().unwrap();
     basin_init(basin.path(), "b", "2026-07-08").unwrap();
@@ -266,7 +273,9 @@ fn basin_commit_all_commits_changes_and_skips_clean_tree() {
 fn basin_round_trips_through_a_remote() {
     // Local bare repo stands in for GitHub — full clone/push/pull loop offline.
     let remote = tempfile::tempdir().unwrap();
-    git2::Repository::init_bare(remote.path()).unwrap();
+    let mut opts = git2::RepositoryInitOptions::new();
+    opts.bare(true).initial_head("main");
+    git2::Repository::init_opts(remote.path(), &opts).unwrap();
     let remote_url = remote.path().to_string_lossy().replace('\\', "/");
 
     let a = tempfile::tempdir().unwrap();

@@ -124,7 +124,11 @@ pub fn basin_init(basin_dir: &Path, name: &str, created_at: &str) -> Result<Basi
         .with_context(|| format!("create basin dir {:?}", basin_dir))?;
 
     if !basin_dir.join(".git").exists() {
-        git2::Repository::init(basin_dir)
+        // Fixed initial branch: basins must behave the same on every machine
+        // regardless of the local init.defaultBranch config.
+        let mut opts = git2::RepositoryInitOptions::new();
+        opts.initial_head("main");
+        git2::Repository::init_opts(basin_dir, &opts)
             .with_context(|| format!("git init basin {:?}", basin_dir))?;
     }
 
@@ -277,8 +281,40 @@ pub fn migrate_central_to_basin(
 /// Stage everything and commit. Returns the new commit id, or `None` when
 /// the working tree is clean. Creates the initial commit if the repo has none.
 pub fn basin_commit_all(basin_dir: &Path, message: &str) -> Result<Option<String>> {
-    let _ = (basin_dir, message);
-    unimplemented!("FAZ 1B")
+    let repo = git2::Repository::open(basin_dir)
+        .with_context(|| format!("open basin repo {:?}", basin_dir))?;
+
+    let mut index = repo.index().context("open basin index")?;
+    index
+        .add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)
+        .context("stage basin changes")?;
+    index.write().context("write basin index")?;
+    let tree_id = index.write_tree().context("write basin tree")?;
+
+    let head_commit = repo.head().ok().and_then(|head| head.peel_to_commit().ok());
+    if let Some(parent) = &head_commit {
+        if parent.tree_id() == tree_id {
+            return Ok(None); // clean tree, nothing to commit
+        }
+    }
+
+    let signature = repo
+        .signature()
+        .or_else(|_| git2::Signature::now("SkillBasin", "basin@skillbasin.local"))
+        .context("basin commit signature")?;
+    let tree = repo.find_tree(tree_id).context("find basin tree")?;
+    let parents: Vec<&git2::Commit> = head_commit.iter().collect();
+    let oid = repo
+        .commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &parents,
+        )
+        .context("commit basin changes")?;
+    Ok(Some(oid.to_string()))
 }
 
 /// Clone a basin from `url` (any git remote, including a local path) into
@@ -287,10 +323,22 @@ pub fn basin_clone_or_pull(url: &str, dest: &Path) -> Result<String> {
     crate::core::git_fetcher::clone_or_pull(url, dest, None, None, None)
 }
 
-/// Push the basin to its `origin` remote via the system git binary.
+/// Push the basin to its `origin` remote via the system git binary, which
+/// picks up the user's credentials, proxies and OS trust store.
 pub fn basin_push(basin_dir: &Path) -> Result<()> {
-    let _ = basin_dir;
-    unimplemented!("FAZ 1B")
+    let output = std::process::Command::new("git")
+        .args(["push", "-u", "origin", "HEAD"])
+        .current_dir(basin_dir)
+        .output()
+        .with_context(|| format!("run git push in {:?}", basin_dir))?;
+    if !output.status.success() {
+        anyhow::bail!(
+            "git push failed for basin {:?}: {}",
+            basin_dir,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(())
 }
 
 /// Record the current content of `updated_dir` as a new version of `id`
@@ -303,8 +351,50 @@ pub fn record_update_as_version(
     semver: Option<&str>,
     date: &str,
 ) -> Result<Option<(String, VersionInfo)>> {
-    let _ = (basin_dir, id, updated_dir, semver, date);
-    unimplemented!("FAZ 1B")
+    let new_hash = format!(
+        "sha256:{}",
+        crate::core::content_hash::hash_dir(updated_dir)
+            .with_context(|| format!("hash updated skill {:?}", updated_dir))?
+    );
+
+    if let Ok(meta) = read_skill_meta(basin_dir, id) {
+        if let Some(latest) = meta.versions.get(&meta.latest) {
+            if latest.content_hash == new_hash {
+                return Ok(None); // unchanged content — never churn versions
+            }
+        }
+    }
+
+    let label = version_label(semver, date, &new_hash);
+    let info = add_skill_version(basin_dir, id, updated_dir, &label, date, None)?;
+    Ok(Some((label, info)))
+}
+
+/// Civil date (`YYYY-MM-DD`) from days since the Unix epoch.
+/// Howard Hinnant's `civil_from_days` — no chrono dependency needed.
+pub fn unix_days_to_date(days: i64) -> String {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let mut year = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    if month <= 2 {
+        year += 1;
+    }
+    format!("{:04}-{:02}-{:02}", year, month, day)
+}
+
+/// Today's UTC date as `YYYY-MM-DD` — the standard `added_at` / label date.
+pub fn today_utc_date() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    unix_days_to_date(secs / 86_400)
 }
 
 #[cfg(test)]
