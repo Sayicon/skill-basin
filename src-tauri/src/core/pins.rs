@@ -119,8 +119,8 @@ pub fn read_machine_pins(basin_dir: &Path, machine: &str) -> Result<MachinePins>
 }
 
 pub fn write_machine_pins(basin_dir: &Path, pins: &MachinePins) -> Result<()> {
-    let _ = (basin_dir, pins);
-    unimplemented!("FAZ 2B")
+    let path = machine_pins_path(basin_dir, &pins.machine);
+    crate::core::basin::write_json_pretty(&path, pins)
 }
 
 /// Path of the sibling manifest for a given target directory.
@@ -144,15 +144,192 @@ pub fn plan_sync(
     pins: &MachinePins,
     tool_dirs: &BTreeMap<String, PathBuf>,
 ) -> Result<Vec<PlanAction>> {
-    let _ = (pins, tool_dirs);
-    unimplemented!("FAZ 2B")
+    // Desired: (tool, skill) -> (version, strategy), enabled targets only.
+    let mut desired: BTreeMap<(String, String), (String, String)> = BTreeMap::new();
+    for entry in &pins.pins {
+        for (tool, target) in &entry.targets {
+            if !target.enabled || !tool_dirs.contains_key(tool) {
+                continue;
+            }
+            desired.insert(
+                (tool.clone(), entry.skill.clone()),
+                (entry.version.clone(), target.strategy.clone()),
+            );
+        }
+    }
+
+    // Actual: (tool, skill) -> manifest, for entries carrying our manifest.
+    let mut managed: BTreeMap<(String, String), ManagedManifest> = BTreeMap::new();
+    for (tool, dir) in tool_dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue; // tool dir may not exist yet — nothing managed there
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() && std::fs::symlink_metadata(&path).is_err() {
+                continue;
+            }
+            if let Some(manifest) = read_managed_manifest(&path) {
+                let skill = manifest.skill.clone();
+                managed.insert((tool.clone(), skill), manifest);
+            }
+        }
+    }
+
+    let mut plan = Vec::new();
+
+    for ((tool, skill), (version, strategy)) in &desired {
+        let target = tool_dirs[tool].join(skill);
+        match managed.get(&(tool.clone(), skill.clone())) {
+            Some(manifest) if &manifest.version == version => {} // converged
+            Some(manifest) => plan.push(PlanAction::Update {
+                skill: skill.clone(),
+                from_version: manifest.version.clone(),
+                to_version: version.clone(),
+                tool: tool.clone(),
+                target,
+                strategy: strategy.clone(),
+            }),
+            None => {
+                // Occupied by something without our manifest? Hands off.
+                if std::fs::symlink_metadata(&target).is_ok() {
+                    plan.push(PlanAction::Conflict {
+                        skill: skill.clone(),
+                        tool: tool.clone(),
+                        target,
+                    });
+                } else {
+                    plan.push(PlanAction::Install {
+                        skill: skill.clone(),
+                        version: version.clone(),
+                        tool: tool.clone(),
+                        target,
+                        strategy: strategy.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    for ((tool, skill), _manifest) in &managed {
+        if !desired.contains_key(&(tool.clone(), skill.clone())) {
+            plan.push(PlanAction::Remove {
+                skill: skill.clone(),
+                tool: tool.clone(),
+                target: tool_dirs[tool].join(skill),
+            });
+        }
+    }
+
+    Ok(plan)
+}
+
+fn sync_with_strategy(source: &Path, target: &Path, strategy: &str) -> Result<()> {
+    if strategy == "copy" {
+        crate::core::sync_engine::sync_dir_copy_with_overwrite(source, target, true)?;
+    } else {
+        crate::core::sync_engine::sync_dir_hybrid_with_overwrite(source, target, true)?;
+    }
+    Ok(())
+}
+
+fn install_version(
+    basin_dir: &Path,
+    skill: &str,
+    version: &str,
+    target: &Path,
+    strategy: &str,
+) -> Result<()> {
+    let source = crate::core::basin::version_dir(basin_dir, skill, version);
+    if !source.exists() {
+        anyhow::bail!("version {} of {} not found in basin", version, skill);
+    }
+    sync_with_strategy(&source, target, strategy)?;
+
+    // Content hash from metadata when recorded; hash the source otherwise.
+    let content_hash = crate::core::basin::read_skill_meta(basin_dir, skill)
+        .ok()
+        .and_then(|meta| meta.versions.get(version).map(|v| v.content_hash.clone()))
+        .map_or_else(
+            || -> Result<String> {
+                Ok(format!(
+                    "sha256:{}",
+                    crate::core::content_hash::hash_dir(&source)?
+                ))
+            },
+            Ok,
+        )?;
+    let manifest = ManagedManifest {
+        skill: skill.to_string(),
+        version: version.to_string(),
+        content_hash,
+    };
+    crate::core::basin::write_json_pretty(&manifest_path_for(target), &manifest)
 }
 
 /// Execute a plan against the basin: sources come from
 /// `skills/<id>/versions/<version>/`. Returns per-action results.
+/// One failing action never aborts the rest of the plan.
 pub fn apply_plan(basin_dir: &Path, plan: &[PlanAction]) -> Result<Vec<ApplyResult>> {
-    let _ = (basin_dir, plan);
-    unimplemented!("FAZ 2B")
+    let mut results = Vec::with_capacity(plan.len());
+    for action in plan {
+        let (skill, tool, outcome) = match action {
+            PlanAction::Install {
+                skill,
+                version,
+                tool,
+                target,
+                strategy,
+            }
+            | PlanAction::Update {
+                skill,
+                to_version: version,
+                tool,
+                target,
+                strategy,
+                ..
+            } => (
+                skill,
+                tool,
+                install_version(basin_dir, skill, version, target, strategy),
+            ),
+            PlanAction::Remove {
+                skill,
+                tool,
+                target,
+            } => {
+                let removed = crate::core::sync_engine::remove_path_any(target).and_then(|()| {
+                    let manifest = manifest_path_for(target);
+                    if manifest.exists() {
+                        std::fs::remove_file(&manifest)
+                            .with_context(|| format!("remove manifest {:?}", manifest))?;
+                    }
+                    Ok(())
+                });
+                (skill, tool, removed)
+            }
+            PlanAction::Conflict {
+                skill,
+                tool,
+                target,
+            } => (
+                skill,
+                tool,
+                Err(anyhow::anyhow!(
+                    "unmanaged directory at {:?} — refusing to overwrite; \
+                     remove it or import it into the basin first",
+                    target
+                )),
+            ),
+        };
+        results.push(ApplyResult {
+            skill: skill.clone(),
+            tool: tool.clone(),
+            ok: outcome.is_ok(),
+            error: outcome.err().map(|err| format!("{:#}", err)),
+        });
+    }
+    Ok(results)
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]

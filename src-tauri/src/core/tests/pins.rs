@@ -193,10 +193,16 @@ fn planner_removes_only_managed_dirs() {
     assert_eq!(plan.len(), 1);
     assert!(matches!(&plan[0], PlanAction::Remove { skill, .. } if skill == "demo"));
 
-    apply_plan(basin.path(), &plan).unwrap();
+    let results = apply_plan(basin.path(), &plan).unwrap();
+    assert!(results.iter().all(|r| r.ok), "{:?}", results);
     assert!(!claude.path().join("demo").exists());
     assert!(!manifest_path_for(&claude.path().join("demo")).exists());
     assert!(claude.path().join("handmade/SKILL.md").exists());
+
+    // Removing a junction/symlink must never delete the basin's version dir.
+    assert!(basin::version_dir(basin.path(), "demo", "1.0.0")
+        .join("SKILL.md")
+        .exists());
 }
 
 #[test]

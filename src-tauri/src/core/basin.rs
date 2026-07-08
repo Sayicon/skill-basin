@@ -155,7 +155,7 @@ pub fn read_manifest(basin_dir: &Path) -> Result<BasinManifest> {
     serde_json::from_str(&content).with_context(|| format!("parse basin manifest {:?}", path))
 }
 
-fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+pub(crate) fn write_json_pretty<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).with_context(|| format!("create dir {:?}", parent))?;
     }

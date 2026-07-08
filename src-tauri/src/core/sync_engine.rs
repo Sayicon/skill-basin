@@ -134,7 +134,7 @@ fn ensure_parent_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn remove_path_any(path: &Path) -> Result<()> {
+pub(crate) fn remove_path_any(path: &Path) -> Result<()> {
     let meta = match std::fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -142,9 +142,20 @@ fn remove_path_any(path: &Path) -> Result<()> {
     };
     let ft = meta.file_type();
 
-    // 软链接（即使指向目录）也应该用 remove_file 删除链接本身
+    // Remove the link itself, never what it points at.
     if ft.is_symlink() {
-        std::fs::remove_file(path).with_context(|| format!("remove symlink {:?}", path))?;
+        #[cfg(windows)]
+        {
+            // Directory symlinks and junctions need remove_dir on Windows;
+            // remove_file only works for file symlinks (else: os error 5).
+            if std::fs::remove_file(path).is_err() {
+                std::fs::remove_dir(path).with_context(|| format!("remove dir link {:?}", path))?;
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            std::fs::remove_file(path).with_context(|| format!("remove symlink {:?}", path))?;
+        }
         return Ok(());
     }
     if ft.is_dir() {
