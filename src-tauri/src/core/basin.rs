@@ -274,6 +274,39 @@ pub fn migrate_central_to_basin(
     Ok(report)
 }
 
+/// Stage everything and commit. Returns the new commit id, or `None` when
+/// the working tree is clean. Creates the initial commit if the repo has none.
+pub fn basin_commit_all(basin_dir: &Path, message: &str) -> Result<Option<String>> {
+    let _ = (basin_dir, message);
+    unimplemented!("FAZ 1B")
+}
+
+/// Clone a basin from `url` (any git remote, including a local path) into
+/// `dest`, or pull if `dest` already has it. Returns HEAD revision.
+pub fn basin_clone_or_pull(url: &str, dest: &Path) -> Result<String> {
+    crate::core::git_fetcher::clone_or_pull(url, dest, None, None, None)
+}
+
+/// Push the basin to its `origin` remote via the system git binary.
+pub fn basin_push(basin_dir: &Path) -> Result<()> {
+    let _ = basin_dir;
+    unimplemented!("FAZ 1B")
+}
+
+/// Record the current content of `updated_dir` as a new version of `id`
+/// unless it is content-identical to the skill's latest version.
+/// Pins are never touched here — updates only ADD versions (never overwrite).
+pub fn record_update_as_version(
+    basin_dir: &Path,
+    id: &str,
+    updated_dir: &Path,
+    semver: Option<&str>,
+    date: &str,
+) -> Result<Option<(String, VersionInfo)>> {
+    let _ = (basin_dir, id, updated_dir, semver, date);
+    unimplemented!("FAZ 1B")
+}
+
 #[cfg(test)]
 #[path = "tests/basin.rs"]
 mod tests;

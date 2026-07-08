@@ -232,3 +232,104 @@ fn migrate_central_moves_skills_as_initial_versions() {
     assert!(report2.migrated.is_empty());
     assert_eq!(report2.skipped.len(), 2);
 }
+
+#[test]
+fn basin_commit_all_commits_changes_and_skips_clean_tree() {
+    let basin = tempfile::tempdir().unwrap();
+    basin_init(basin.path(), "b", "2026-07-08").unwrap();
+
+    // Initial content -> first commit exists.
+    let first = basin_commit_all(basin.path(), "init basin").unwrap();
+    assert!(first.is_some());
+
+    // Clean tree -> no new commit.
+    assert!(basin_commit_all(basin.path(), "noop").unwrap().is_none());
+
+    // New version -> new commit, different id.
+    let src = tempfile::tempdir().unwrap();
+    fs::write(src.path().join("SKILL.md"), "x").unwrap();
+    add_skill_version(
+        basin.path(),
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-08",
+        None,
+    )
+    .unwrap();
+    let second = basin_commit_all(basin.path(), "add demo 1.0.0").unwrap();
+    assert!(second.is_some());
+    assert_ne!(first, second);
+}
+
+#[test]
+fn basin_round_trips_through_a_remote() {
+    // Local bare repo stands in for GitHub — full clone/push/pull loop offline.
+    let remote = tempfile::tempdir().unwrap();
+    git2::Repository::init_bare(remote.path()).unwrap();
+    let remote_url = remote.path().to_string_lossy().replace('\\', "/");
+
+    let a = tempfile::tempdir().unwrap();
+    let a_dir = a.path().join("basin");
+    basin_init(&a_dir, "b", "2026-07-08").unwrap();
+    let src = tempfile::tempdir().unwrap();
+    fs::write(src.path().join("SKILL.md"), "hello").unwrap();
+    add_skill_version(&a_dir, "demo", src.path(), "1.0.0", "2026-07-08", None).unwrap();
+    basin_commit_all(&a_dir, "add demo").unwrap();
+
+    {
+        let repo = git2::Repository::open(&a_dir).unwrap();
+        repo.remote("origin", &remote_url).unwrap();
+    }
+    basin_push(&a_dir).unwrap();
+
+    // Fresh machine clones the same basin and sees the version.
+    let b = tempfile::tempdir().unwrap();
+    let b_dir = b.path().join("basin");
+    basin_clone_or_pull(&remote_url, &b_dir).unwrap();
+    let meta = read_skill_meta(&b_dir, "demo").unwrap();
+    assert_eq!(meta.latest, "1.0.0");
+    assert!(version_dir(&b_dir, "demo", "1.0.0")
+        .join("SKILL.md")
+        .exists());
+}
+
+#[test]
+fn record_update_adds_version_only_when_content_changed() {
+    let basin = tempfile::tempdir().unwrap();
+    basin_init(basin.path(), "b", "2026-07-08").unwrap();
+
+    let src = tempfile::tempdir().unwrap();
+    fs::write(src.path().join("SKILL.md"), "v1 body").unwrap();
+    add_skill_version(
+        basin.path(),
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-08",
+        None,
+    )
+    .unwrap();
+
+    // Same content -> no new version, latest unchanged.
+    let unchanged =
+        record_update_as_version(basin.path(), "demo", src.path(), None, "2026-07-09").unwrap();
+    assert!(unchanged.is_none());
+    assert_eq!(
+        read_skill_meta(basin.path(), "demo").unwrap().latest,
+        "1.0.0"
+    );
+
+    // Changed content -> new date.hash4 version, old one still on disk.
+    fs::write(src.path().join("SKILL.md"), "v2 body").unwrap();
+    let (label, info) =
+        record_update_as_version(basin.path(), "demo", src.path(), None, "2026-07-09")
+            .unwrap()
+            .unwrap();
+    assert!(label.starts_with("2026-07-09."));
+    assert!(info.content_hash.starts_with("sha256:"));
+    let meta = read_skill_meta(basin.path(), "demo").unwrap();
+    assert_eq!(meta.latest, label);
+    assert_eq!(meta.versions.len(), 2);
+    assert!(version_dir(basin.path(), "demo", "1.0.0").exists());
+}
