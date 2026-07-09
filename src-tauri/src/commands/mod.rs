@@ -130,6 +130,18 @@ fn format_anyhow_error(err: anyhow::Error) -> String {
     full
 }
 
+/// Home expansion joins the OS home (backslashes on Windows) with literal
+/// `/`-separated suffixes, so raw display strings read like
+/// `C:\Users\x\.claude/skills`. Functionally fine — cosmetically wrong.
+fn display_path(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy();
+    if cfg!(windows) {
+        raw.replace('/', "\\")
+    } else {
+        raw.into_owned()
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct ToolInfoDto {
     pub key: String,
@@ -611,7 +623,7 @@ pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusD
                 is_custom: tool.is_custom,
                 adapter_kind: tool.adapter_kind,
                 mcp_endpoint: tool.mcp_endpoint,
-                skills_dir: tool.skills_dir.to_string_lossy().to_string(),
+                skills_dir: display_path(&tool.skills_dir),
                 project_skills_dir: tool.project_skills_dir,
                 supports_project_scope: tool.supports_project_scope,
             });
