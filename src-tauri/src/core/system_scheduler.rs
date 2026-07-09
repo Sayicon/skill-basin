@@ -188,17 +188,34 @@ pub fn windows_schtasks_args(config: &SchedulerConfig) -> Vec<String> {
     ];
     match config.schedule.schedule_type {
         AutoUpdateScheduleType::Interval => {
+            // schtasks rejects /SC HOURLY /MO above 23 and /SC MINUTE /MO
+            // above 1439, so day-scale intervals (including the default
+            // 24 hours) must be expressed as /SC DAILY instead.
             args.push("/SC".to_string());
             match config.schedule.interval_unit {
                 AutoUpdateIntervalUnit::Minutes => {
-                    args.push("MINUTE".to_string());
-                    args.push("/MO".to_string());
-                    args.push(config.schedule.interval_value.to_string());
+                    let minutes = config.schedule.interval_value.max(1);
+                    if minutes >= 1440 {
+                        args.push("DAILY".to_string());
+                        args.push("/MO".to_string());
+                        args.push(((minutes + 720) / 1440).max(1).to_string());
+                    } else {
+                        args.push("MINUTE".to_string());
+                        args.push("/MO".to_string());
+                        args.push(minutes.to_string());
+                    }
                 }
                 AutoUpdateIntervalUnit::Hours => {
-                    args.push("HOURLY".to_string());
-                    args.push("/MO".to_string());
-                    args.push(config.schedule.interval_value.to_string());
+                    let hours = config.schedule.interval_value.max(1);
+                    if hours >= 24 {
+                        args.push("DAILY".to_string());
+                        args.push("/MO".to_string());
+                        args.push(((hours + 12) / 24).max(1).to_string());
+                    } else {
+                        args.push("HOURLY".to_string());
+                        args.push("/MO".to_string());
+                        args.push(hours.to_string());
+                    }
                 }
             }
         }

@@ -151,6 +151,48 @@ fn windows_task_supports_minutes_and_daily_time() {
 }
 
 #[test]
+fn windows_task_converts_day_scale_intervals_to_daily() {
+    // Regression: schtasks caps HOURLY /MO at 23 and MINUTE /MO at 1439, so
+    // the DEFAULT 24-hour config failed with "Invalid value for /MO option"
+    // and the scheduled task never registered on Windows.
+    let day = windows_schtasks_args(&SchedulerConfig {
+        executable: Path::new("C:\\SkillsHub\\SkillsHub.exe").to_path_buf(),
+        schedule: hourly_schedule(24),
+    });
+    assert!(day.iter().any(|v| v == "DAILY"), "{day:?}");
+    assert!(!day.iter().any(|v| v == "HOURLY"));
+    let mo = day.iter().position(|v| v == "/MO").unwrap();
+    assert_eq!(day[mo + 1], "1");
+
+    let two_days = windows_schtasks_args(&SchedulerConfig {
+        executable: Path::new("C:\\SkillsHub\\SkillsHub.exe").to_path_buf(),
+        schedule: hourly_schedule(48),
+    });
+    let mo = two_days.iter().position(|v| v == "/MO").unwrap();
+    assert_eq!(two_days[mo + 1], "2");
+
+    let day_in_minutes = windows_schtasks_args(&SchedulerConfig {
+        executable: Path::new("C:\\SkillsHub\\SkillsHub.exe").to_path_buf(),
+        schedule: minute_schedule(1440),
+    });
+    assert!(
+        day_in_minutes.iter().any(|v| v == "DAILY"),
+        "{day_in_minutes:?}"
+    );
+    assert!(!day_in_minutes.iter().any(|v| v == "MINUTE"));
+}
+
+#[test]
+fn windows_task_clamps_nonpositive_intervals() {
+    let args = windows_schtasks_args(&SchedulerConfig {
+        executable: Path::new("C:\\SkillsHub\\SkillsHub.exe").to_path_buf(),
+        schedule: hourly_schedule(0),
+    });
+    let mo = args.iter().position(|v| v == "/MO").unwrap();
+    assert_eq!(args[mo + 1], "1");
+}
+
+#[test]
 fn windows_run_args_start_registered_task() {
     let args = windows_schtasks_run_args();
 
