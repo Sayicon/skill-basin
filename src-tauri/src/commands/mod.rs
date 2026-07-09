@@ -237,8 +237,8 @@ fn configured_basin_dir(store: &SkillStore) -> anyhow::Result<Option<std::path::
 ///
 /// `config.custom_tools` (legacy per-machine SQLite storage, owned by
 /// `ToolsPage.tsx`) is layered on top for now — kept working on purpose
-/// (see DECISIONS.md D11 addendum) until FAZ 4 migrates that UI onto the
-/// basin-backed `agent_registry` custom entries and this loop is deleted.
+/// until that UI migrates onto the basin-backed `agent_registry` custom
+/// entries and this loop is deleted.
 fn runtime_tools(store: &SkillStore, include_disabled: bool) -> anyhow::Result<Vec<RuntimeTool>> {
     let config = load_tool_config(store)?;
     let resolved = match configured_basin_dir(store)? {

@@ -13,7 +13,7 @@
 //! built-in or not — is overridden by `agents.json` when present.
 //!
 //! Tauri-independent by design (see `core/sync_engine.rs`/`core/installer.rs`
-//! for the same pattern): the FAZ 7 hub-agent CLI reuses this directly.
+//! for the same pattern): a headless hub-agent CLI can reuse this directly.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};

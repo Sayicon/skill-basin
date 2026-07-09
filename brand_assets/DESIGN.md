@@ -14,9 +14,6 @@ Estetik yön (Kerem, 2026-07-09): **Cursor + Vercel(Geist) + Claude.ai sentezi**
 - **Claude.ai'den**: light temanın sıcak kağıt tonu (#f6f5f1 — soğuk SaaS beyazı değil).
 - **Cursor'dan**: sessiz koyu chrome, katmanlı yüzeyler, kenar ışığıyla derinlik.
 
-Karar kayıtları: docs/DECISIONS.md D12 (koyu varsayılan, ikonsuz mono wordmark,
-dark kontrast revizyonu).
-
 ## Sabit kurallar
 
 1. **Koyu tema varsayılandır** (`themePreference` başlangıcı `'dark'`). Her yeni

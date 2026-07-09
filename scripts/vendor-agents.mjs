@@ -14,10 +14,11 @@
  * lightweight structural parse (brace-depth entry splitter + per-field regex)
  * instead of pulling in a TS toolchain. Every entry keeps `verified: false` and
  * a `source` URL pointing at the exact vendored commit; nothing here is trusted
- * blindly (see docs/superpowers/specs/2026-07-08-faz3-agent-adapter-db-design.md).
+ * blindly.
  *
- * Tier1 (claude_code/cursor/antigravity/hermes_agent) is Kerem-verified by hand
- * in Rust and is ALWAYS excluded from the output — see DECISIONS.md D11.
+ * Tier1 (claude_code/cursor/antigravity/hermes_agent) is hand-verified in the
+ * Rust built-ins and is ALWAYS excluded from the output, so vendored data can
+ * never override those adapters.
  */
 
 export const TIER1_KEYS = ['claude_code', 'cursor', 'antigravity', 'hermes_agent']
