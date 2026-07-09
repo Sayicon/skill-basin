@@ -14,6 +14,7 @@ type SkillsListProps = {
   visibleSkills: ManagedSkill[]
   installedTools: ToolOption[]
   machinePins: MachinePinsDto | null
+  latestVersions: Record<string, string>
   loading: boolean
   bulkMode: boolean
   selectedSkillIds: string[]
@@ -39,6 +40,7 @@ const SkillsList = ({
   visibleSkills,
   installedTools,
   machinePins,
+  latestVersions,
   loading,
   bulkMode,
   selectedSkillIds,
@@ -96,6 +98,7 @@ const SkillsList = ({
               skill={skill}
               installedTools={installedTools}
               machinePins={machinePins}
+              latestVersion={latestVersions[skill.name]}
               loading={loading}
               bulkMode={bulkMode}
               bulkSelected={selectedSkillSet.has(skill.id)}

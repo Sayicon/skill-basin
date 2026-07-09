@@ -111,6 +111,7 @@ function App() {
   )
   const [managedSkills, setManagedSkills] = useState<ManagedSkill[]>([])
   const [machinePins, setMachinePins] = useState<MachinePinsDto | null>(null)
+  const [latestVersions, setLatestVersions] = useState<Record<string, string>>({})
   const [localPath, setLocalPath] = useState('')
   const [localName, setLocalName] = useState('')
   const [gitUrl, setGitUrl] = useState('')
@@ -133,6 +134,7 @@ function App() {
   const [toolConfig, setToolConfig] = useState<ToolConfigDto | null>(null)
   const [showNewToolsModal, setShowNewToolsModal] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [installLicenseWarning, setInstallLicenseWarning] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [pendingSharedToggle, setPendingSharedToggle] = useState<{
     skill: ManagedSkill
@@ -369,13 +371,23 @@ function App() {
     }
   }, [invokeTauri])
 
+  const loadLatestVersions = useCallback(async () => {
+    try {
+      const result = await invokeTauri<Record<string, string>>('basin_latest_versions')
+      setLatestVersions(result)
+    } catch {
+      setLatestVersions({})
+    }
+  }, [invokeTauri])
+
   useEffect(() => {
     if (isTauri) {
       loadManagedSkills()
       loadTags()
       loadMachinePins()
+      loadLatestVersions()
     }
-  }, [isTauri, loadManagedSkills, loadTags, loadMachinePins])
+  }, [isTauri, loadManagedSkills, loadTags, loadMachinePins, loadLatestVersions])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1280,9 +1292,11 @@ function App() {
         // The list otherwise only loads at startup, so installs done outside
         // this window (CLI, another instance) never show up until a restart.
         void loadManagedSkills()
+        void loadMachinePins()
+        void loadLatestVersions()
       }
     },
-    [loadFeaturedSkills, loadManagedSkills],
+    [loadFeaturedSkills, loadLatestVersions, loadMachinePins, loadManagedSkills],
   )
 
   const handleOpenDetail = useCallback((skill: ManagedSkill) => {
@@ -1334,6 +1348,8 @@ function App() {
     resetInstallScope()
     setShowAddModal(true)
     setAddModalTagIds([])
+    // A hand-typed URL carries no license claim either way.
+    setInstallLicenseWarning(false)
   }, [resetInstallScope])
 
   const applySelectedAddModalTags = useCallback(
@@ -2628,9 +2644,12 @@ function App() {
   const exploreInstallUrlRef = useRef<string | null>(null)
 
   const handleExploreInstall = useCallback(
-    (sourceUrl: string, skillName?: string) => {
+    (sourceUrl: string, skillName?: string, license?: string | null) => {
       resetInstallScope()
       setGitUrl(sourceUrl)
+      // Featured entries carry no license data at all, so only an explicit
+      // null/empty from a search result means "the source declares none".
+      setInstallLicenseWarning(license !== undefined && !license)
       if (skillName) setAutoSelectSkillName(skillName)
       if (toolStatus) {
         const targets: Record<string, boolean> = {}
@@ -3270,6 +3289,9 @@ function App() {
       setSuccessToastMessage(updatedText)
       setActionMessage(null)
       await loadManagedSkills()
+      // A successful update snapshots a new basin version; the "behind" badge
+      // reads that, and pins deliberately stay where they were.
+      await loadLatestVersions()
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err)
       setError(raw)
@@ -3278,7 +3300,7 @@ function App() {
       setLoadingStartAt(null)
     }
     },
-    [invokeTauri, loadManagedSkills, t],
+    [invokeTauri, loadLatestVersions, loadManagedSkills, t],
   )
 
   const handleUpdateSkill = useCallback(
@@ -3379,6 +3401,7 @@ function App() {
               visibleSkills={visibleSkills}
               installedTools={installedTools}
               machinePins={machinePins}
+              latestVersions={latestVersions}
               loading={loading}
               bulkMode={bulkMode}
               selectedSkillIds={bulkSelectedIds}
@@ -3568,6 +3591,7 @@ function App() {
         open={showAddModal}
         loading={loading}
         canClose={!loading}
+        licenseWarning={installLicenseWarning}
         addModalTab={addModalTab}
         localPath={localPath}
         localName={localName}

@@ -35,3 +35,7 @@ bun.lock
 temporary screenshots/
 serve.mjs
 screenshot.mjs
+
+# cargo-mutants run output
+src-tauri/mutants.out/
+src-tauri/mutants.out.old/

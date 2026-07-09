@@ -1,5 +1,5 @@
 import { memo, type SetStateAction } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ShieldAlert } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import ScopeSelector from '../ScopeSelector'
 import {
@@ -14,6 +14,8 @@ type AddSkillModalProps = {
   open: boolean
   loading: boolean
   canClose: boolean
+  /** The chosen source declares no license — say so before anything is copied. */
+  licenseWarning?: boolean
   addModalTab: 'local' | 'git'
   localPath: string
   localName: string
@@ -47,6 +49,7 @@ const AddSkillModal = ({
   open,
   loading,
   canClose,
+  licenseWarning = false,
   addModalTab,
   localPath,
   localName,
@@ -104,6 +107,12 @@ const AddSkillModal = ({
           </button>
         </div>
         <div className="modal-body">
+          {licenseWarning ? (
+            <div className="modal-license-warning" role="alert">
+              <ShieldAlert size={15} />
+              <span>{t('explore.licenseMissingHint')}</span>
+            </div>
+          ) : null}
           <div className="tabs">
             <button
               className={`tab-item${addModalTab === 'local' ? ' active' : ''}`}

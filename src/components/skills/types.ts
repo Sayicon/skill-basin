@@ -220,11 +220,17 @@ export type FeaturedSkillDto = {
   source_url: string
 }
 
+export type SkillOrigin = 'skills_sh' | 'github'
+
 export type OnlineSkillDto = {
   name: string
   installs: number
   source: string
   source_url: string
+  /** Absent when the index reports no identifiable license. Never inferred. */
+  license?: string | null
+  /** Which index answered; `github` means skills.sh was unreachable. */
+  origin: SkillOrigin
 }
 
 export type SkillFileEntry = {

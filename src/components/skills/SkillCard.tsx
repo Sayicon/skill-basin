@@ -1,5 +1,15 @@
 import { memo, useState } from 'react'
-import { Box, Copy, Folder, Github, Power, RefreshCw, Tag, Trash2 } from 'lucide-react'
+import {
+  ArrowUpCircle,
+  Box,
+  Copy,
+  Folder,
+  Github,
+  Power,
+  RefreshCw,
+  Tag,
+  Trash2,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
 import type { MachinePinsDto, ManagedSkill, ToolOption } from './types'
@@ -13,6 +23,8 @@ type SkillCardProps = {
   skill: ManagedSkill
   installedTools: ToolOption[]
   machinePins: MachinePinsDto | null
+  /** Newest version of this skill in the basin, if it has one. */
+  latestVersion?: string
   loading: boolean
   bulkMode: boolean
   bulkSelected: boolean
@@ -38,6 +50,7 @@ const SkillCard = ({
   skill,
   installedTools,
   machinePins,
+  latestVersion,
   loading,
   bulkMode,
   bulkSelected,
@@ -89,6 +102,15 @@ const SkillCard = ({
       }
     }
   }
+
+  // A skill is "behind" when some tool is pinned to an older version than the
+  // newest one in the basin. Updating the source never moves pins on its own,
+  // so this badge is the only place that state becomes visible.
+  const toolsBehind = latestVersion
+    ? [...pinnedVersionByTool.entries()]
+        .filter(([, version]) => version !== latestVersion)
+        .map(([toolId]) => toolId)
+    : []
 
   // Split tools into synced and remaining for badge display
   const syncedTools: { tool: ToolOption; target: (typeof skill.targets)[0] }[] = []
@@ -157,6 +179,20 @@ const SkillCard = ({
                 </button>
               ) : null}
             </div>
+          ) : null}
+          {toolsBehind.length > 0 ? (
+            <button
+              type="button"
+              className="skill-outdated-badge"
+              onClick={() => onOpenDetail(skill)}
+              title={t('versions.behindHint', {
+                version: latestVersion,
+                tools: toolsBehind.join(', '),
+              })}
+            >
+              <ArrowUpCircle size={12} />
+              {t('versions.behind', { count: toolsBehind.length })}
+            </button>
           ) : null}
           {!skillEnabled ? (
             <span className="skill-disabled-badge">{t('disabled')}</span>
@@ -228,7 +264,13 @@ const SkillCard = ({
               <span className="status-badge" />
               {tool.label}
               {pinnedVersionByTool.has(tool.id) ? (
-                <span className="tool-pill-version mono">
+                <span
+                  className={`tool-pill-version mono${
+                    latestVersion && pinnedVersionByTool.get(tool.id) !== latestVersion
+                      ? ' behind'
+                      : ''
+                  }`}
+                >
                   {pinnedVersionByTool.get(tool.id)}
                 </span>
               ) : null}

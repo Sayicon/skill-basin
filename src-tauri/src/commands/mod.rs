@@ -506,6 +506,34 @@ pub async fn basin_latest_versions(
         .map_err(format_anyhow_error)
 }
 
+/// Packages `skill`@`version` from the basin as a zip at `destination`.
+/// The frontend picks the path through the native save dialog, so no path is
+/// ever derived from untrusted input here.
+#[tauri::command]
+pub async fn export_skill_version(
+    store: State<'_, SkillStore>,
+    skill: String,
+    version: String,
+    destination: String,
+) -> Result<String, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let zip_path = std::path::PathBuf::from(&destination);
+        crate::core::export::export_skill_version(&basin_dir, &skill, &version, &zip_path)?;
+        Ok::<_, anyhow::Error>(display_path(&zip_path))
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+/// Suggested file name for the save dialog.
+#[tauri::command]
+pub fn default_export_file_name(skill: String, version: String) -> String {
+    crate::core::export::default_export_file_name(&skill, &version)
+}
+
 /// Every version of `skill_name` recorded in the basin, newest first.
 #[tauri::command]
 pub async fn list_skill_versions(

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Pin, PinOff } from 'lucide-react'
+import { Download, Pin, PinOff } from 'lucide-react'
 import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
 import type {
@@ -33,6 +33,7 @@ const SkillVersionsPanel = ({
   const [pins, setPins] = useState<MachinePinsDto | null>(null)
   const [loading, setLoading] = useState(true)
   const [pendingTool, setPendingTool] = useState<string | null>(null)
+  const [exportingVersion, setExportingVersion] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -120,6 +121,35 @@ const SkillVersionsPanel = ({
     [invokeTauri, reportSyncFailures, skillName, t],
   )
 
+  const handleExport = useCallback(
+    async (version: string) => {
+      setExportingVersion(version)
+      try {
+        const suggested = await invokeTauri<string>('default_export_file_name', {
+          skill: skillName,
+          version,
+        })
+        const { save } = await import('@tauri-apps/plugin-dialog')
+        const destination = await save({
+          defaultPath: suggested,
+          filters: [{ name: 'Zip archive', extensions: ['zip'] }],
+        })
+        if (!destination) return // user cancelled the save dialog
+        const written = await invokeTauri<string>('export_skill_version', {
+          skill: skillName,
+          version,
+          destination,
+        })
+        toast.success(t('versions.exported', { path: written }))
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : t('versions.exportFailed'))
+      } finally {
+        setExportingVersion(null)
+      }
+    },
+    [invokeTauri, skillName, t],
+  )
+
   const handleUnpin = useCallback(
     async (tool: string) => {
       setPendingTool(tool)
@@ -180,6 +210,16 @@ const SkillVersionsPanel = ({
                   </span>
                 ) : null}
                 <span className="versions-date">{version.addedAt}</span>
+                <button
+                  type="button"
+                  className="icon-btn versions-export"
+                  disabled={exportingVersion === version.label}
+                  onClick={() => void handleExport(version.label)}
+                  aria-label={t('versions.export')}
+                  title={t('versions.export')}
+                >
+                  <Download size={14} />
+                </button>
               </li>
             )
           })}
