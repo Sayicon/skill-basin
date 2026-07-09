@@ -24,9 +24,10 @@ const Header = ({
     <header className="skills-header">
       <div className="header-left">
         <div className="brand-area">
-          <img className="logo-icon" src="/logo.png" alt="" />
           <div className="brand-text-wrap">
-            <div className="brand-text">{t('appName')}</div>
+            <div className="brand-text">
+              Skill<span className="brand-text-accent">Basin</span>
+            </div>
           </div>
         </div>
         <nav className="nav-tabs">
@@ -58,7 +59,7 @@ const Header = ({
       </div>
       <div className="header-actions">
         <button className="lang-btn" type="button" onClick={onToggleLanguage}>
-          {language === 'en' ? t('languageShort.en') : t('languageShort.zh')}
+          {t(`languageShort.${language === 'tr' ? 'tr' : language === 'zh' ? 'zh' : 'en'}`)}
         </button>
         <button className={`icon-btn${activeView === 'settings' ? ' active' : ''}`} type="button" onClick={onOpenSettings}>
           <Settings size={18} />

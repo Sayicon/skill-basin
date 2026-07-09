@@ -16,7 +16,7 @@ type SettingsPageProps = {
   githubToken: string
   githubProxyConfig: GithubProxyConfigDto
   onPickStoragePath: () => void
-  onToggleLanguage: () => void
+  onSelectLanguage: (next: string) => void
   onThemeChange: (nextTheme: 'system' | 'light' | 'dark') => void
   onGitCacheCleanupDaysChange: (nextDays: number) => void
   onGitCacheTtlSecsChange: (nextSecs: number) => void
@@ -35,7 +35,7 @@ const SettingsPage = ({
   gitCacheTtlSecs,
   themePreference,
   onPickStoragePath,
-  onToggleLanguage,
+  onSelectLanguage,
   onThemeChange,
   onGitCacheCleanupDaysChange,
   onGitCacheTtlSecsChange,
@@ -177,13 +177,10 @@ const SettingsPage = ({
                       id="settings-language"
                       className="settings-select"
                       value={language}
-                      onChange={(event) => {
-                        if (event.target.value !== language) {
-                          onToggleLanguage()
-                        }
-                      }}
+                      onChange={(event) => onSelectLanguage(event.target.value)}
                     >
                       <option value="en">{t('languageOptions.en')}</option>
+                      <option value="tr">{t('languageOptions.tr')}</option>
                       <option value="zh">{t('languageOptions.zh')}</option>
                     </select>
                     <svg

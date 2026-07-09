@@ -78,14 +78,6 @@
   border-radius: 2px 2px 0 0;
 }
 
-.logo-icon {
-  width: 36px;
-  height: 36px;
-  display: block;
-  object-fit: contain;
-  border-radius: 8px;
-}
-
 .brand-text-wrap {
   display: flex;
   flex-direction: column;
@@ -93,13 +85,15 @@
 }
 
 .brand-text {
+  font-family: var(--font-mono);
   font-weight: 700;
-  font-size: 20px;
-  letter-spacing: -0.03em;
-  background: linear-gradient(to right, #2563eb, #9333ea, #ea580c);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.brand-text-accent {
+  color: var(--accent-primary);
 }
 
 .brand-subtitle {

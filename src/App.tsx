@@ -86,10 +86,17 @@ function App() {
   const themeStorageKey = 'skills-theme'
   const skillScopeStorageKey = 'skills-project-scope-state-v1'
   const toggleLanguage = useCallback(() => {
-    void i18n.changeLanguage(language === 'en' ? 'zh' : 'en')
+    const next = language === 'en' ? 'tr' : language === 'tr' ? 'zh' : 'en'
+    void i18n.changeLanguage(next)
   }, [i18n, language])
+  const selectLanguage = useCallback(
+    (next: string) => {
+      void i18n.changeLanguage(next)
+    },
+    [i18n],
+  )
   const [themePreference, setThemePreference] = useState<'system' | 'light' | 'dark'>(
-    'system',
+    'dark',
   )
   const [systemTheme, setSystemTheme] = useState<'light' | 'dark'>('light')
   const [plan, setPlan] = useState<OnboardingPlan | null>(null)
@@ -3492,7 +3499,7 @@ function App() {
             gitCacheTtlSecs={gitCacheTtlSecs}
             themePreference={themePreference}
             onPickStoragePath={handlePickStoragePath}
-            onToggleLanguage={toggleLanguage}
+            onSelectLanguage={selectLanguage}
             onThemeChange={handleThemeChange}
             onGitCacheCleanupDaysChange={handleGitCacheCleanupDaysChange}
             onGitCacheTtlSecsChange={handleGitCacheTtlSecsChange}
