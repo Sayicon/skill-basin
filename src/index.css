@@ -36,6 +36,7 @@
   --danger-soft-bg: #f6e3de;
   --danger-soft-border: #e6bcaf;
   --danger-soft-bg-strong: #f2d8d1;
+  --toggle-knob-bg: #ffffff;
   --font-ui: "Fira Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "Fira Code", ui-monospace, SFMono-Regular, Menlo, Monaco,
     Consolas, "Liberation Mono", "Courier New", monospace;
@@ -49,13 +50,19 @@
 }
 
 :root[data-theme='dark'] {
-  --bg-app: #131211;
-  --bg-panel: #1a1917;
-  --bg-element: #232019;
-  --bg-element-hover: #2c2820;
-  --bg-header: rgba(19, 18, 17, 0.82);
-  --border-subtle: #2d2a23;
-  --border-strong: #423d31;
+  /*
+   * Surface separation matters more in dark mode than exact hues: the app
+   * background sits near-black while panels/elements step up in clearly
+   * visible increments, and borders are bright enough to read as edges
+   * (Vercel dark uses ~#333 lines on #0a0a0a for the same reason).
+   */
+  --bg-app: #100f0e;
+  --bg-panel: #1d1b18;
+  --bg-element: #292620;
+  --bg-element-hover: #353128;
+  --bg-header: rgba(16, 15, 14, 0.85);
+  --border-subtle: #393428;
+  --border-strong: #55503f;
   --text-primary: #f2efe6;
   --text-secondary: #c9c3b4;
   --text-tertiary: #8d8778;
@@ -75,8 +82,14 @@
   --danger-soft-bg: #33201b;
   --danger-soft-border: #5c352b;
   --danger-soft-bg-strong: #3d2621;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
-  --shadow-lg: 0 16px 32px -12px rgb(0 0 0 / 0.55), 0 4px 10px -4px rgb(0 0 0 / 0.4);
+  /* Knob must stay lighter than the toggle track in both themes; bg-panel
+     would render it darker than the track here. */
+  --toggle-knob-bg: #e9e5da;
+  /* Pure black shadows are invisible on a near-black app background, so dark
+     surfaces get their depth from a faint top edge light instead. */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  --shadow-lg: 0 16px 32px -12px rgb(0 0 0 / 0.55), 0 4px 10px -4px rgb(0 0 0 / 0.4),
+    inset 0 1px 0 rgb(255 255 255 / 0.05);
   --glow-accent: 0 0 0 1px rgb(75 195 214 / 0.25), 0 4px 24px -6px rgb(75 195 214 / 0.35);
   color-scheme: dark;
 }

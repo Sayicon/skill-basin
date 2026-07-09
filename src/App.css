@@ -3615,7 +3615,7 @@
 .settings-toggle-knob {
   width: 18px;
   height: 18px;
-  background: var(--bg-panel);
+  background: var(--toggle-knob-bg);
   border-radius: 50%;
   position: absolute;
   top: 2px;
