@@ -132,7 +132,12 @@ export function extractGlobalSkillsDir(body, homeBases) {
   }
   const base = homeBases[homeVar]
   const path = base ? `~/${base}/${suffix}` : `~/${suffix}`
-  return { kind: 'resolved', path, detectBase: base || suffix.split('/')[0] }
+  // Detect the tool by its own directory (the skills dir's parent), never by
+  // a shared base like ~/.config — that exists on nearly every machine and
+  // turned 20 uninstalled tools into false "Detected" entries.
+  const parent = path.replace(/\/[^/]+$/, '')
+  const detectPath = parent === '~' ? path : parent
+  return { kind: 'resolved', path, detectPath }
 }
 
 /**
@@ -168,7 +173,7 @@ export function transformAgentsTs(source, { sourceUrl, tier1Keys = TIER1_KEYS } 
       adapterKind: 'dir',
       ...(global.kind === 'resolved' ? { globalSkillsDir: global.path } : {}),
       projectSkillsDir: skillsDir,
-      detect: global.kind === 'resolved' ? [`~/${global.detectBase}`] : [],
+      detect: global.kind === 'resolved' ? [global.detectPath] : [],
       defaultStrategy: 'auto',
       verified: false,
       source: sourceUrl,

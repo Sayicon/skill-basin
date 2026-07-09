@@ -20,7 +20,7 @@
       "globalSkillsDir": "~/.config/agents/skills",
       "projectSkillsDir": ".agents/skills",
       "detect": [
-        "~/.config"
+        "~/.config/agents"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -33,7 +33,7 @@
       "globalSkillsDir": "~/.gemini/antigravity-cli/skills",
       "projectSkillsDir": ".agents/skills",
       "detect": [
-        "~/.gemini"
+        "~/.gemini/antigravity-cli"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -46,7 +46,7 @@
       "globalSkillsDir": "~/.astrbot/data/skills",
       "projectSkillsDir": "data/skills",
       "detect": [
-        "~/.astrbot"
+        "~/.astrbot/data"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -189,7 +189,7 @@
       "globalSkillsDir": "~/.snowflake/cortex/skills",
       "projectSkillsDir": ".cortex/skills",
       "detect": [
-        "~/.snowflake"
+        "~/.snowflake/cortex"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -202,7 +202,7 @@
       "globalSkillsDir": "~/.config/crush/skills",
       "projectSkillsDir": ".crush/skills",
       "detect": [
-        "~/.config"
+        "~/.config/crush"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -215,7 +215,7 @@
       "globalSkillsDir": "~/.deepagents/agent/skills",
       "projectSkillsDir": ".agents/skills",
       "detect": [
-        "~/.deepagents"
+        "~/.deepagents/agent"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -228,7 +228,7 @@
       "globalSkillsDir": "~/.config/devin/skills",
       "projectSkillsDir": ".devin/skills",
       "detect": [
-        "~/.config"
+        "~/.config/devin"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -329,7 +329,7 @@
       "globalSkillsDir": "~/.config/goose/skills",
       "projectSkillsDir": ".goose/skills",
       "detect": [
-        "~/.config"
+        "~/.config/goose"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -524,7 +524,7 @@
       "globalSkillsDir": "~/.config/opencode/skills",
       "projectSkillsDir": ".agents/skills",
       "detect": [
-        "~/.config"
+        "~/.config/opencode"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -563,7 +563,7 @@
       "globalSkillsDir": "~/.pi/agent/skills",
       "projectSkillsDir": ".pi/skills",
       "detect": [
-        "~/.pi"
+        "~/.pi/agent"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -615,7 +615,7 @@
       "globalSkillsDir": "~/.config/agents/skills",
       "projectSkillsDir": ".agents/skills",
       "detect": [
-        "~/.config"
+        "~/.config/agents"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -667,7 +667,7 @@
       "globalSkillsDir": "~/.tabnine/agent/skills",
       "projectSkillsDir": ".tabnine/agent/skills",
       "detect": [
-        "~/.tabnine"
+        "~/.tabnine/agent"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -745,7 +745,7 @@
       "globalSkillsDir": "~/.codeium/windsurf/skills",
       "projectSkillsDir": ".windsurf/skills",
       "detect": [
-        "~/.codeium"
+        "~/.codeium/windsurf"
       ],
       "defaultStrategy": "auto",
       "verified": false,
@@ -846,7 +846,7 @@
       "globalSkillsDir": "~/.config/agents/skills",
       "projectSkillsDir": ".agents/skills",
       "detect": [
-        "~/.config"
+        "~/.config/agents"
       ],
       "defaultStrategy": "auto",
       "verified": false,

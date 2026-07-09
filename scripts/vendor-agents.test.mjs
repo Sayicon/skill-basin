@@ -117,13 +117,20 @@ describe('extractGlobalSkillsDir', () => {
   it('resolves join(home, literal) to a ~/ path', () => {
     const [, body] = splitTopLevelEntries(FIXTURE_SOURCE).find(([k]) => k === 'aider-desk')
     const result = extractGlobalSkillsDir(body, bases)
-    expect(result).toEqual({ kind: 'resolved', path: '~/.aider-desk/skills', detectBase: '.aider-desk' })
+    expect(result).toEqual({ kind: 'resolved', path: '~/.aider-desk/skills', detectPath: '~/.aider-desk' })
   })
 
   it('resolves join(configHome, literal) using the parsed base', () => {
     const [, body] = splitTopLevelEntries(FIXTURE_SOURCE).find(([k]) => k === 'amp')
     const result = extractGlobalSkillsDir(body, bases)
-    expect(result).toEqual({ kind: 'resolved', path: '~/.config/agents/skills', detectBase: '.config' })
+    expect(result).toEqual({ kind: 'resolved', path: '~/.config/agents/skills', detectPath: '~/.config/agents' })
+  })
+
+  it('detects by the tool-specific dir, never a shared base like ~/.config', () => {
+    const [, body] = splitTopLevelEntries(FIXTURE_SOURCE).find(([k]) => k === 'amp')
+    const { detectPath } = extractGlobalSkillsDir(body, bases)
+    expect(detectPath).not.toBe('~/.config')
+    expect(detectPath).not.toBe('~')
   })
 
   it('flags a bare `undefined` global dir as none', () => {
