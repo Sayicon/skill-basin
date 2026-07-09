@@ -208,6 +208,90 @@ fn set_skill_pin_core_reports_conflict_instead_of_silent_success() {
 }
 
 #[test]
+fn online_dto_from_github_repo_labels_origin_and_keeps_unknown_license() {
+    let repo = RepoSummary {
+        full_name: "vercel-labs/skills".to_string(),
+        html_url: "https://github.com/vercel-labs/skills".to_string(),
+        description: None,
+        stars: 42,
+        updated_at: "2026-07-09T00:00:00Z".to_string(),
+        clone_url: "https://github.com/vercel-labs/skills.git".to_string(),
+        license: None,
+    };
+
+    let dto = OnlineSkillDto::from(repo);
+    assert_eq!(dto.origin, ORIGIN_GITHUB);
+    assert_eq!(dto.name, "skills", "card shows the repo's last segment");
+    assert_eq!(dto.source, "vercel-labs/skills");
+    assert_eq!(dto.installs, 42, "stars stand in for the install count");
+    assert_eq!(dto.license, None, "unknown license must not be invented");
+}
+
+#[test]
+fn online_dto_from_skills_sh_carries_its_license_and_origin() {
+    let dto = OnlineSkillDto::from(OnlineSkillResult {
+        name: "react-expert".to_string(),
+        installs: 100,
+        source: "a/b".to_string(),
+        source_url: "https://github.com/a/b".to_string(),
+        license: Some("MIT".to_string()),
+    });
+
+    assert_eq!(dto.origin, ORIGIN_SKILLS_SH);
+    assert_eq!(dto.license.as_deref(), Some("MIT"));
+}
+
+#[test]
+fn basin_latest_versions_core_maps_every_skill_to_its_latest_label() {
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+    let src = tempfile::tempdir().unwrap();
+
+    std::fs::write(src.path().join("SKILL.md"), "demo v1").unwrap();
+    crate::core::basin::add_skill_version(
+        &basin_dir,
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-09",
+        None,
+    )
+    .unwrap();
+    std::fs::write(src.path().join("SKILL.md"), "demo v2").unwrap();
+    crate::core::basin::add_skill_version(
+        &basin_dir,
+        "demo",
+        src.path(),
+        "2.0.0",
+        "2026-07-10",
+        None,
+    )
+    .unwrap();
+    std::fs::write(src.path().join("SKILL.md"), "solo").unwrap();
+    crate::core::basin::add_skill_version(
+        &basin_dir,
+        "solo",
+        src.path(),
+        "1.0.0",
+        "2026-07-09",
+        None,
+    )
+    .unwrap();
+
+    let map = basin_latest_versions_core(&store).unwrap();
+    assert_eq!(map.get("demo").map(String::as_str), Some("2.0.0"));
+    assert_eq!(map.get("solo").map(String::as_str), Some("1.0.0"));
+}
+
+#[test]
+fn basin_latest_versions_core_is_empty_without_a_basin() {
+    // Pre-onboarding the UI still renders; an unconfigured basin means "no
+    // version info", not an error the cards have to handle.
+    let (_dir, store) = make_store();
+    assert!(basin_latest_versions_core(&store).unwrap().is_empty());
+}
+
+#[test]
 fn require_basin_dir_errors_when_unconfigured() {
     let (_dir, store) = make_store();
     let err = require_basin_dir(&store).unwrap_err().to_string();

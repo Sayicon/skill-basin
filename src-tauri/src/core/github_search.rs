@@ -16,6 +16,14 @@ struct RepoItem {
     stargazers_count: u64,
     updated_at: String,
     clone_url: String,
+    #[serde(default)]
+    license: Option<RepoLicense>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RepoLicense {
+    #[serde(default)]
+    spdx_id: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -26,6 +34,20 @@ pub struct RepoSummary {
     pub stars: u64,
     pub updated_at: String,
     pub clone_url: String,
+    /// SPDX id, or `None` when GitHub cannot identify one. Installing an
+    /// unlicensed skill is a decision for the user to make knowingly.
+    pub license: Option<String>,
+}
+
+/// GitHub returns this when it finds a license file it cannot classify.
+/// It is not a license grant, so it must not be shown as one.
+const SPDX_UNKNOWN: &str = "NOASSERTION";
+
+fn normalize_spdx(license: Option<RepoLicense>) -> Option<String> {
+    license
+        .and_then(|entry| entry.spdx_id)
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty() && !id.eq_ignore_ascii_case(SPDX_UNKNOWN))
 }
 
 pub fn search_github_repos(
@@ -75,6 +97,7 @@ pub(super) fn search_github_repos_inner(
             stars: item.stargazers_count,
             updated_at: item.updated_at,
             clone_url: item.clone_url,
+            license: normalize_spdx(item.license),
         })
         .collect())
 }

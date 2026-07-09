@@ -465,6 +465,47 @@ pub struct SkillVersionDto {
     pub is_latest: bool,
 }
 
+/// `skill name -> latest version label` for every skill in the basin. One
+/// call feeds the whole list view; asking per card would be N reads.
+/// No basin configured yet is an empty map, not an error — the cards render
+/// fine without version info.
+fn basin_latest_versions_core(
+    store: &SkillStore,
+) -> anyhow::Result<std::collections::BTreeMap<String, String>> {
+    let Some(basin_dir) = configured_basin_dir(store)? else {
+        return Ok(Default::default());
+    };
+    let skills_root = basin_dir.join("skills");
+    if !skills_root.is_dir() {
+        return Ok(Default::default());
+    }
+
+    let mut latest = std::collections::BTreeMap::new();
+    for entry in std::fs::read_dir(&skills_root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        // A half-written skill dir shouldn't take the whole list down.
+        if let Ok(meta) = read_skill_meta(&basin_dir, &name) {
+            latest.insert(name, meta.latest);
+        }
+    }
+    Ok(latest)
+}
+
+#[tauri::command]
+pub async fn basin_latest_versions(
+    store: State<'_, SkillStore>,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || basin_latest_versions_core(&store))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
 /// Every version of `skill_name` recorded in the basin, newest first.
 #[tauri::command]
 pub async fn list_skill_versions(
@@ -1978,13 +2019,20 @@ pub async fn get_featured_skills(
     .map_err(format_anyhow_error)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct OnlineSkillDto {
     pub name: String,
     pub installs: u64,
     pub source: String,
     pub source_url: String,
+    /// `None` renders as an explicit "no license" warning — never as "MIT".
+    pub license: Option<String>,
+    /// Which index answered: `skills_sh` normally, `github` after a fallback.
+    pub origin: String,
 }
+
+pub const ORIGIN_SKILLS_SH: &str = "skills_sh";
+pub const ORIGIN_GITHUB: &str = "github";
 
 impl From<OnlineSkillResult> for OnlineSkillDto {
     fn from(r: OnlineSkillResult) -> Self {
@@ -1993,19 +2041,68 @@ impl From<OnlineSkillResult> for OnlineSkillDto {
             installs: r.installs,
             source: r.source,
             source_url: r.source_url,
+            license: r.license,
+            origin: ORIGIN_SKILLS_SH.to_string(),
+        }
+    }
+}
+
+impl From<RepoSummary> for OnlineSkillDto {
+    fn from(repo: RepoSummary) -> Self {
+        Self {
+            name: repo
+                .full_name
+                .rsplit('/')
+                .next()
+                .unwrap_or(&repo.full_name)
+                .to_string(),
+            // GitHub reports stars, not installs; the card labels this column
+            // by origin rather than pretending the two are the same metric.
+            installs: repo.stars,
+            source: repo.full_name,
+            source_url: repo.html_url,
+            license: repo.license,
+            origin: ORIGIN_GITHUB.to_string(),
+        }
+    }
+}
+
+/// skills.sh is unofficial and unversioned. When it fails — down, slow, or
+/// reshaped — fall back to GitHub repo search rather than showing the user an
+/// empty marketplace. The DTO records which index answered.
+fn search_skills_online_with_fallback(
+    store: &SkillStore,
+    query: &str,
+    limit: usize,
+) -> anyhow::Result<Vec<OnlineSkillDto>> {
+    match search_skills_online_core(query, limit) {
+        Ok(results) if !results.is_empty() => {
+            Ok(results.into_iter().map(OnlineSkillDto::from).collect())
+        }
+        // An empty answer is a valid answer: only a hard failure falls back.
+        Ok(empty) => Ok(empty.into_iter().map(OnlineSkillDto::from).collect()),
+        Err(err) => {
+            log::warn!("[search] skills.sh failed, falling back to GitHub: {err:#}");
+            let token = store.get_setting("github_token")?.unwrap_or_default();
+            let proxy_url = get_github_proxy_url_core(store)?;
+            let token_opt = (!token.is_empty()).then_some(token.as_str());
+            let repos = search_github_repos(query, limit, token_opt, &proxy_url)
+                .context("skills.sh unavailable and GitHub fallback failed")?;
+            Ok(repos.into_iter().map(OnlineSkillDto::from).collect())
         }
     }
 }
 
 #[tauri::command]
 pub async fn search_skills_online(
+    store: State<'_, SkillStore>,
     query: String,
     limit: Option<u32>,
 ) -> Result<Vec<OnlineSkillDto>, String> {
+    let store = store.inner().clone();
     let limit = limit.unwrap_or(20) as usize;
     tauri::async_runtime::spawn_blocking(move || {
-        let results = search_skills_online_core(&query, limit)?;
-        Ok::<_, anyhow::Error>(results.into_iter().map(OnlineSkillDto::from).collect())
+        search_skills_online_with_fallback(&store, &query, limit)
     })
     .await
     .map_err(|err| err.to_string())?

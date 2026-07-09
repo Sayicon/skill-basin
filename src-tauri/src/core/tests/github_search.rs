@@ -19,6 +19,56 @@ fn json_one_repo() -> String {
 }
 
 #[test]
+fn license_is_read_from_spdx_id_and_stays_unknown_when_absent() {
+    let body = r#"{
+  "items": [
+    {
+      "full_name": "o/licensed",
+      "html_url": "https://example.com/a",
+      "description": null,
+      "stargazers_count": 1,
+      "updated_at": "2020-01-01T00:00:00Z",
+      "clone_url": "https://example.com/a.git",
+      "license": { "spdx_id": "MIT", "name": "MIT License" }
+    },
+    {
+      "full_name": "o/unlicensed",
+      "html_url": "https://example.com/b",
+      "description": null,
+      "stargazers_count": 1,
+      "updated_at": "2020-01-01T00:00:00Z",
+      "clone_url": "https://example.com/b.git",
+      "license": null
+    },
+    {
+      "full_name": "o/noassertion",
+      "html_url": "https://example.com/c",
+      "description": null,
+      "stargazers_count": 1,
+      "updated_at": "2020-01-01T00:00:00Z",
+      "clone_url": "https://example.com/c.git",
+      "license": { "spdx_id": "NOASSERTION", "name": "Other" }
+    }
+  ]
+}"#;
+    let mut server = mockito::Server::new();
+    let _m = server
+        .mock("GET", "/search/repositories")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .create();
+
+    let out = search_github_repos_inner(&server.url(), "q", 10, None, "").unwrap();
+    assert_eq!(out[0].license.as_deref(), Some("MIT"));
+    assert_eq!(out[1].license, None);
+    // GitHub reports NOASSERTION for repos whose license it cannot identify;
+    // that is not a license, and claiming one would mislead the user.
+    assert_eq!(out[2].license, None);
+}
+
+#[test]
 fn limit_is_clamped() {
     let mut server = mockito::Server::new();
 
