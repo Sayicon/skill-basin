@@ -139,6 +139,15 @@ function App() {
     toolId: string
     affectedToolIds?: string[]
   } | null>(null)
+  // Same shared-dir confirmation for the install modal's target chips.
+  // window.confirm is unusable here: WebView2 returns undefined without ever
+  // showing a dialog, which silently blocked the toggle.
+  const [pendingSyncTargetToggle, setPendingSyncTargetToggle] = useState<{
+    toolId: string
+    checked: boolean
+    affected: string[]
+    shared: string[]
+  } | null>(null)
   const [updateAvailableVersion, setUpdateAvailableVersion] = useState<string | null>(null)
   const [updateBody, setUpdateBody] = useState<string | null>(null)
   const [updateInstalling, setUpdateInstalling] = useState(false)
@@ -1184,7 +1193,11 @@ function App() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      // The error banner doesn't render on the Updates screen — without a
+      // toast the button just looks dead when schtasks registration fails.
+      toast.error(message, { duration: 8000 })
     } finally {
       setAutoUpdateTriggering(false)
     }
@@ -1264,9 +1277,12 @@ function App() {
       }
       if (view === 'myskills') {
         setDetailSkill(null)
+        // The list otherwise only loads at startup, so installs done outside
+        // this window (CLI, another instance) never show up until a restart.
+        void loadManagedSkills()
       }
     },
-    [loadFeaturedSkills],
+    [loadFeaturedSkills, loadManagedSkills],
   )
 
   const handleOpenDetail = useCallback((skill: ManagedSkill) => {
@@ -2063,6 +2079,22 @@ function App() {
     [invokeTauri, loadManagedSkills, loadTags, t],
   )
 
+  const applySyncTargetChange = useCallback(
+    (affected: string[], shared: string[], checked: boolean) => {
+      setSyncTargets((prev) => {
+        const next = { ...prev }
+        for (const id of affected) next[id] = checked
+        if (installScope === 'project') {
+          for (const id of shared) {
+            if (!toolSupportsProjectScope(id)) next[id] = false
+          }
+        }
+        return next
+      })
+    },
+    [installScope, toolSupportsProjectScope],
+  )
+
   const handleSyncTargetChange = useCallback(
     (toolId: string, checked: boolean) => {
       const sharedByToolId =
@@ -2077,37 +2109,41 @@ function App() {
             )
           : shared
       if (affected.length > 1) {
-        const others = affected.filter((id) => id !== toolId)
-        const otherLabels = others.map((id) => toolLabelById[id] ?? id).join(', ')
-        const ok = window.confirm(
-          t('sharedDirConfirm', {
-            tool: toolLabelById[toolId] ?? toolId,
-            others: otherLabels,
-          }),
-        )
-        if (!ok) return
+        setPendingSyncTargetToggle({ toolId, checked, affected, shared })
+        return
       }
-      setSyncTargets((prev) => {
-        const next = { ...prev }
-        for (const id of affected) next[id] = checked
-        if (installScope === 'project') {
-          for (const id of shared) {
-            if (!toolSupportsProjectScope(id)) next[id] = false
-          }
-        }
-        return next
-      })
+      applySyncTargetChange(affected, shared, checked)
     },
     [
+      applySyncTargetChange,
       installScope,
       isInstalled,
       sharedProjectToolIdsByToolId,
       sharedToolIdsByToolId,
-      t,
-      toolLabelById,
       toolSupportsProjectScope,
     ],
   )
+
+  const handleSyncTargetSharedConfirm = useCallback(() => {
+    if (!pendingSyncTargetToggle) return
+    const payload = pendingSyncTargetToggle
+    setPendingSyncTargetToggle(null)
+    applySyncTargetChange(payload.affected, payload.shared, payload.checked)
+  }, [applySyncTargetChange, pendingSyncTargetToggle])
+
+  const handleSyncTargetSharedCancel = useCallback(() => {
+    setPendingSyncTargetToggle(null)
+  }, [])
+
+  const pendingSyncTargetLabels = useMemo(() => {
+    if (!pendingSyncTargetToggle) return null
+    const { toolId, affected } = pendingSyncTargetToggle
+    const others = affected.filter((id) => id !== toolId)
+    return {
+      toolLabel: toolLabelById[toolId] ?? toolId,
+      otherLabels: others.map((id) => toolLabelById[id] ?? id).join(', '),
+    }
+  }, [pendingSyncTargetToggle, toolLabelById])
 
   const handleInstallScopeChange = useCallback(
     (nextScope: InstallScope) => {
@@ -3633,6 +3669,16 @@ function App() {
         otherLabels={pendingSharedLabels?.otherLabels ?? ''}
         onRequestClose={handleSharedCancel}
         onConfirm={handleSharedConfirm}
+        t={t}
+      />
+
+      <SharedDirModal
+        open={Boolean(pendingSyncTargetToggle)}
+        loading={loading}
+        toolLabel={pendingSyncTargetLabels?.toolLabel ?? ''}
+        otherLabels={pendingSyncTargetLabels?.otherLabels ?? ''}
+        onRequestClose={handleSyncTargetSharedCancel}
+        onConfirm={handleSyncTargetSharedConfirm}
         t={t}
       />
 

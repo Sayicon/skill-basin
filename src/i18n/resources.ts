@@ -147,7 +147,8 @@ export const resources = {
       clearAll: 'Clear all',
       manageTags: 'Manage Tags...',
       tagsHelp: 'Tags help you filter and organize skills. They do not change sync results.',
-      untaggedSkillsCount: '{{count}} skills have no tags',
+      untaggedSkillsCount_one: '{{count}} skill has no tags',
+      untaggedSkillsCount_other: '{{count}} skills have no tags',
       review: 'Review',
       newTag: 'New Tag',
       newTagPlaceholder: 'New tag name',
@@ -219,6 +220,7 @@ export const resources = {
       deleteBody:
         'This will delete the managed record and remove synced links created by this app.',
       cancel: 'Cancel',
+      save: 'Save',
       confirm: 'Confirm',
       confirmRemove: 'Remove',
       maintenance: 'Maintenance',
@@ -535,7 +537,8 @@ export const resources = {
         loadingFiles: 'Loading files...',
         loadingContent: 'Loading file content...',
         readError: 'Failed to read file',
-        fileCount: '{{count}} files',
+        fileCount_one: '{{count}} file',
+        fileCount_other: '{{count}} files',
       },
       versions: {
         loading: 'Loading versions...',
@@ -549,6 +552,7 @@ export const resources = {
         unpinned: 'Unpinned {{tool}}',
         pinFailed: 'Failed to pin',
         unpinFailed: 'Failed to unpin',
+        syncRefused: 'Pin saved, but syncing {{tool}} was refused: {{reason}}',
       },
       sharedDirConfirm:
         'Note: {{tool}} shares the same skills directory with {{others}}. This change will affect all of them. Continue?',
@@ -821,6 +825,7 @@ export const resources = {
       deleteBody:
         'Bu, yönetilen kaydı siler ve bu uygulamanın oluşturduğu senkron bağlantıları kaldırır.',
       cancel: 'Vazgeç',
+      save: 'Kaydet',
       confirm: 'Onayla',
       confirmRemove: 'Kaldır',
       maintenance: 'Bakım',
@@ -1151,6 +1156,7 @@ export const resources = {
         unpinned: '{{tool}}\'un pini kaldırıldı',
         pinFailed: 'Pinleme başarısız',
         unpinFailed: 'Pin kaldırma başarısız',
+        syncRefused: 'Pin kaydedildi ama {{tool}} senkronu reddedildi: {{reason}}',
       },
       sharedDirConfirm:
         'Not: {{tool}}, {{others}} ile aynı skills dizinini paylaşıyor. Bu değişiklik hepsini etkiler. Devam edilsin mi?',
@@ -1420,6 +1426,7 @@ export const resources = {
       deleteTitle: '确认移除？',
       deleteBody: '将删除托管记录，并清理由本应用创建的同步链接。',
       cancel: '取消',
+      save: '保存',
       confirm: '确认',
       confirmRemove: '确认移除',
       maintenance: '维护',
@@ -1732,6 +1739,7 @@ export const resources = {
         unpinned: '已取消固定 {{tool}}',
         pinFailed: '固定失败',
         unpinFailed: '取消固定失败',
+        syncRefused: '已保存固定，但同步 {{tool}} 被拒绝：{{reason}}',
       },
       sharedDirConfirm:
         '提示：{{tool}} 与 {{others}} 共用同一个 skills 目录，本次修改会同时影响它们。是否继续？',

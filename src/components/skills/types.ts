@@ -86,6 +86,9 @@ export type InstallResultDto = {
 export type ToolInfoDto = {
   key: string
   label: string
+  /** Tool's directory exists on disk — independent of the user's toggle. */
+  detected: boolean
+  /** Detected AND enabled — eligibility as a sync target. */
   installed: boolean
   enabled: boolean
   is_custom: boolean
@@ -100,6 +103,18 @@ export type ToolStatusDto = {
   tools: ToolInfoDto[]
   installed: string[]
   newly_installed: string[]
+}
+
+export type PinApplyResultDto = {
+  skill: string
+  tool: string
+  ok: boolean
+  error?: string
+}
+
+export type PinSyncResultDto = {
+  pins: MachinePinsDto
+  results: PinApplyResultDto[]
 }
 
 export type SkillVersionDto = {

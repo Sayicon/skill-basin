@@ -147,6 +147,12 @@ pub fn set_pin(
     target: PinTarget,
     tool_dirs: &BTreeMap<String, PathBuf>,
 ) -> Result<(MachinePins, Vec<ApplyResult>)> {
+    // A pin for a tool the planner can't place is a config error, not a
+    // silent no-op: recording it would claim a sync that can never happen.
+    if !tool_dirs.contains_key(tool) {
+        anyhow::bail!("TOOL_DIR_UNKNOWN|{tool}");
+    }
+
     let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
 
     for entry in pins.pins.iter_mut() {

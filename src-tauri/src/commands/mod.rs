@@ -134,6 +134,10 @@ fn format_anyhow_error(err: anyhow::Error) -> String {
 pub struct ToolInfoDto {
     pub key: String,
     pub label: String,
+    /// Tool's directory exists on disk, regardless of the user's on/off
+    /// toggle. Drives "Detected" badges; a disabled tool stays detected.
+    pub detected: bool,
+    /// Detected AND enabled — eligibility as a sync target.
     pub installed: bool,
     pub enabled: bool,
     pub is_custom: bool,
@@ -156,6 +160,7 @@ pub struct ToolStatusDto {
 struct RuntimeTool {
     key: String,
     label: String,
+    detected: bool,
     installed: bool,
     enabled: bool,
     is_custom: bool,
@@ -253,10 +258,12 @@ fn runtime_tools(store: &SkillStore, include_disabled: bool) -> anyhow::Result<V
             continue;
         }
         seen_keys.insert(adapter.key.clone());
-        let installed = adapter.enabled && adapter.is_installed();
+        let detected = adapter.is_installed();
+        let installed = adapter.enabled && detected;
         tools.push(RuntimeTool {
             key: adapter.key,
             label: adapter.display_name,
+            detected,
             installed,
             enabled: adapter.enabled,
             is_custom: adapter.is_custom,
@@ -284,6 +291,7 @@ fn runtime_tools(store: &SkillStore, include_disabled: bool) -> anyhow::Result<V
         tools.push(RuntimeTool {
             key: custom.key,
             label: custom.label,
+            detected,
             installed: custom.enabled && detected,
             enabled: custom.enabled,
             is_custom: true,
@@ -477,10 +485,21 @@ fn resolved_tool_dirs(
     basin_dir: &std::path::Path,
     tool_config: &ToolConfig,
 ) -> anyhow::Result<std::collections::BTreeMap<String, std::path::PathBuf>> {
-    Ok(resolve_all_adapters(basin_dir, tool_config)?
-        .into_iter()
-        .filter_map(|adapter| adapter.skills_dir.map(|dir| (adapter.key, dir)))
-        .collect())
+    let mut dirs: std::collections::BTreeMap<String, std::path::PathBuf> =
+        resolve_all_adapters(basin_dir, tool_config)?
+            .into_iter()
+            .filter_map(|adapter| adapter.skills_dir.map(|dir| (adapter.key, dir)))
+            .collect();
+    // Legacy SQLite custom tools are pin targets too — leaving them out made
+    // pinning to one a silent no-op. An agents.json entry with the same key
+    // wins (same rule runtime_tools applies).
+    for custom in &tool_config.custom_tools {
+        if dirs.contains_key(&custom.key) {
+            continue;
+        }
+        dirs.insert(custom.key.clone(), expand_home_path(&custom.skills_dir)?);
+    }
+    Ok(dirs)
 }
 
 /// This machine's current pins (which version of which skill goes to which
@@ -498,6 +517,34 @@ pub async fn get_machine_pins(store: State<'_, SkillStore>) -> Result<MachinePin
     .map_err(format_anyhow_error)
 }
 
+/// Pin/unpin response: the updated pin set plus what actually happened on
+/// disk. A pin can be recorded while its sync is refused (e.g. an unmanaged
+/// directory occupies the target) — swallowing `results` made the UI report
+/// success over a sync that never happened.
+#[derive(Debug, Serialize)]
+pub struct PinSyncResultDto {
+    pub pins: MachinePins,
+    pub results: Vec<crate::core::pins::ApplyResult>,
+}
+
+fn set_skill_pin_core(
+    store: &SkillStore,
+    skill: &str,
+    version: &str,
+    tool: &str,
+    target: PinTarget,
+) -> anyhow::Result<PinSyncResultDto> {
+    let basin_dir = require_basin_dir(store)?;
+    let machine = current_machine_id(store)?;
+    let config = load_tool_config(store)?;
+    let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
+    let (pins, results) = set_pin(
+        &basin_dir, &machine, skill, version, tool, target, &tool_dirs,
+    )?;
+    crate::core::basin::basin_commit_all(&basin_dir, &format!("pin {skill}@{version} -> {tool}"))?;
+    Ok(PinSyncResultDto { pins, results })
+}
+
 /// Pins `tool` to `skill`@`version` — moves it off whatever version of the
 /// same skill it was pinned to before — and syncs immediately.
 #[tauri::command]
@@ -507,25 +554,28 @@ pub async fn set_skill_pin(
     version: String,
     tool: String,
     target: PinTarget,
-) -> Result<MachinePins, String> {
+) -> Result<PinSyncResultDto, String> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let basin_dir = require_basin_dir(&store)?;
-        let machine = current_machine_id(&store)?;
-        let config = load_tool_config(&store)?;
-        let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
-        let (pins, _results) = set_pin(
-            &basin_dir, &machine, &skill, &version, &tool, target, &tool_dirs,
-        )?;
-        crate::core::basin::basin_commit_all(
-            &basin_dir,
-            &format!("pin {skill}@{version} -> {tool}"),
-        )?;
-        Ok::<_, anyhow::Error>(pins)
+        set_skill_pin_core(&store, &skill, &version, &tool, target)
     })
     .await
     .map_err(|err| err.to_string())?
     .map_err(format_anyhow_error)
+}
+
+fn unset_skill_pin_core(
+    store: &SkillStore,
+    skill: &str,
+    tool: &str,
+) -> anyhow::Result<PinSyncResultDto> {
+    let basin_dir = require_basin_dir(store)?;
+    let machine = current_machine_id(store)?;
+    let config = load_tool_config(store)?;
+    let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
+    let (pins, results) = unset_pin(&basin_dir, &machine, skill, tool, &tool_dirs)?;
+    crate::core::basin::basin_commit_all(&basin_dir, &format!("unpin {skill} -> {tool}"))?;
+    Ok(PinSyncResultDto { pins, results })
 }
 
 /// Removes `tool`'s pin for `skill` (whichever version) and syncs — the
@@ -535,20 +585,12 @@ pub async fn unset_skill_pin(
     store: State<'_, SkillStore>,
     skill: String,
     tool: String,
-) -> Result<MachinePins, String> {
+) -> Result<PinSyncResultDto, String> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let basin_dir = require_basin_dir(&store)?;
-        let machine = current_machine_id(&store)?;
-        let config = load_tool_config(&store)?;
-        let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
-        let (pins, _results) = unset_pin(&basin_dir, &machine, &skill, &tool, &tool_dirs)?;
-        crate::core::basin::basin_commit_all(&basin_dir, &format!("unpin {skill} -> {tool}"))?;
-        Ok::<_, anyhow::Error>(pins)
-    })
-    .await
-    .map_err(|err| err.to_string())?
-    .map_err(format_anyhow_error)
+    tauri::async_runtime::spawn_blocking(move || unset_skill_pin_core(&store, &skill, &tool))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
 }
 
 #[tauri::command]
@@ -557,11 +599,13 @@ pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusD
     tauri::async_runtime::spawn_blocking(move || {
         let mut tools: Vec<ToolInfoDto> = Vec::new();
         let mut installed: Vec<String> = Vec::new();
+        let mut detected: Vec<String> = Vec::new();
 
         for tool in runtime_tools(&store, true)? {
             tools.push(ToolInfoDto {
                 key: tool.key.clone(),
                 label: tool.label,
+                detected: tool.detected,
                 installed: tool.installed,
                 enabled: tool.enabled,
                 is_custom: tool.is_custom,
@@ -571,20 +615,27 @@ pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusD
                 project_skills_dir: tool.project_skills_dir,
                 supports_project_scope: tool.supports_project_scope,
             });
+            if tool.detected {
+                detected.push(tool.key.clone());
+            }
             if tool.installed {
                 installed.push(tool.key);
             }
         }
 
         installed.dedup();
+        detected.dedup();
 
         let prev: Vec<String> = store
             .get_setting("installed_tools_v1")?
             .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
             .unwrap_or_default();
 
+        // "New tool" means newly DETECTED on disk. Comparing against the
+        // enabled set made a plain disable→enable round trip fire a bogus
+        // "new tool detected" notification.
         let prev_set: std::collections::HashSet<String> = prev.into_iter().collect();
-        let newly_installed: Vec<String> = installed
+        let newly_installed: Vec<String> = detected
             .iter()
             .filter(|k| !prev_set.contains(*k))
             .cloned()
@@ -593,7 +644,7 @@ pub async fn get_tool_status(store: State<'_, SkillStore>) -> Result<ToolStatusD
         // Persist current set (best effort).
         let _ = store.set_setting(
             "installed_tools_v1",
-            &serde_json::to_string(&installed).unwrap_or_else(|_| "[]".to_string()),
+            &serde_json::to_string(&detected).unwrap_or_else(|_| "[]".to_string()),
         );
 
         Ok::<_, anyhow::Error>(ToolStatusDto {

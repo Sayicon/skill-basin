@@ -4668,9 +4668,20 @@
 }
 
 .pin-matrix-row {
-  display: flex;
+  /* Fixed columns so arrows and selects line up across rows regardless of
+     how wide each tool chip is. */
+  display: grid;
+  grid-template-columns: 140px 16px 1fr 28px;
   align-items: center;
   gap: 10px;
+}
+
+.pin-matrix-row > .chip {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pin-matrix-arrow {

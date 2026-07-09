@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
 import type {
   MachinePinsDto,
+  PinSyncResultDto,
   PinTargetDto,
   SkillVersionDto,
   ToolOption,
@@ -60,7 +61,8 @@ const SkillVersionsPanel = ({
     for (const entry of pins.pins) {
       if (entry.skill !== skillName) continue
       for (const [tool, target] of Object.entries(entry.targets)) {
-        map.set(tool, { version: entry.version, target })
+        // Disabled targets count as unpinned — same rule SkillCard applies.
+        if (target.enabled) map.set(tool, { version: entry.version, target })
       }
     }
     return map
@@ -76,44 +78,67 @@ const SkillVersionsPanel = ({
     return counts
   }, [pinnedByTool])
 
+  // A pin can be recorded while its on-disk sync is refused (unmanaged dir at
+  // the target). Surface those failures instead of toasting success over them.
+  const reportSyncFailures = useCallback(
+    (result: PinSyncResultDto) => {
+      const failures = result.results.filter((entry) => !entry.ok)
+      for (const failure of failures) {
+        toast.error(
+          t('versions.syncRefused', {
+            tool: failure.tool,
+            reason: failure.error ?? t('versions.pinFailed'),
+          }),
+          { duration: 8000 },
+        )
+      }
+      return failures.length > 0
+    },
+    [t],
+  )
+
   const handlePinChange = useCallback(
     async (tool: string, version: string) => {
       setPendingTool(tool)
       try {
-        const updated = await invokeTauri<MachinePinsDto>('set_skill_pin', {
+        const result = await invokeTauri<PinSyncResultDto>('set_skill_pin', {
           skill: skillName,
           version,
           tool,
           target: { enabled: true, strategy: 'auto' },
         })
-        setPins(updated)
-        toast.success(t('versions.pinned', { tool, version }))
+        setPins(result.pins)
+        if (!reportSyncFailures(result)) {
+          toast.success(t('versions.pinned', { tool, version }))
+        }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : t('versions.pinFailed'))
       } finally {
         setPendingTool(null)
       }
     },
-    [invokeTauri, skillName, t],
+    [invokeTauri, reportSyncFailures, skillName, t],
   )
 
   const handleUnpin = useCallback(
     async (tool: string) => {
       setPendingTool(tool)
       try {
-        const updated = await invokeTauri<MachinePinsDto>('unset_skill_pin', {
+        const result = await invokeTauri<PinSyncResultDto>('unset_skill_pin', {
           skill: skillName,
           tool,
         })
-        setPins(updated)
-        toast.success(t('versions.unpinned', { tool }))
+        setPins(result.pins)
+        if (!reportSyncFailures(result)) {
+          toast.success(t('versions.unpinned', { tool }))
+        }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : t('versions.unpinFailed'))
       } finally {
         setPendingTool(null)
       }
     },
-    [invokeTauri, skillName, t],
+    [invokeTauri, reportSyncFailures, skillName, t],
   )
 
   if (loading) {
@@ -177,7 +202,12 @@ const SkillVersionsPanel = ({
                   disabled={isPending}
                   onChange={(event) => {
                     const next = event.target.value
-                    if (next) void handlePinChange(tool.id, next)
+                    if (next) {
+                      void handlePinChange(tool.id, next)
+                    } else if (pinned) {
+                      // Choosing "off" is an unpin, same as the icon button.
+                      void handleUnpin(tool.id)
+                    }
                   }}
                 >
                   <option value="">{t('versions.off')}</option>

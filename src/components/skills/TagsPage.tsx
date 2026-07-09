@@ -34,6 +34,23 @@ const TagsPage = ({
 }: TagsPageProps) => {
   const [query, setQuery] = useState('')
   const [newTagName, setNewTagName] = useState('')
+  // Inline rename instead of window.prompt: WebView2 doesn't implement the
+  // native JS dialogs, so prompt-based rename silently did nothing in the
+  // real app window.
+  const [renamingTagId, setRenamingTagId] = useState<number | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
+
+  const startRename = (tagId: number, currentName: string) => {
+    setRenamingTagId(tagId)
+    setRenameDraft(currentName)
+  }
+
+  const submitRename = () => {
+    const name = renameDraft.trim()
+    if (renamingTagId !== null && name) onRenameTag(renamingTagId, name)
+    setRenamingTagId(null)
+    setRenameDraft('')
+  }
   const filteredTags = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     if (!normalized) return tags
@@ -121,25 +138,48 @@ const TagsPage = ({
         ) : (
           filteredTags.map((tag) => (
             <div className="tags-table-row" key={tag.id}>
-              <span className="tags-table-name">#{tag.name}</span>
+              {renamingTagId === tag.id ? (
+                <span className="tags-table-name">
+                  <input
+                    className="search-input tags-rename-input"
+                    value={renameDraft}
+                    autoFocus
+                    onChange={(event) => setRenameDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') submitRename()
+                      if (event.key === 'Escape') setRenamingTagId(null)
+                    }}
+                    aria-label={t('renameTagPrompt')}
+                  />
+                </span>
+              ) : (
+                <span className="tags-table-name">#{tag.name}</span>
+              )}
               <span>{tag.skill_count}</span>
               <span>{formatRelative(tag.updated_at)}</span>
               <span className="tags-table-actions">
-                <button type="button" onClick={() => onViewTag(tag.id)}>
-                  {t('view')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextName = window.prompt(t('renameTagPrompt'), tag.name)
-                    if (nextName?.trim()) onRenameTag(tag.id, nextName)
-                  }}
-                >
-                  {t('rename')}
-                </button>
-                <button type="button" onClick={() => onDeleteTag(tag)}>
-                  {t('deleteAction')}
-                </button>
+                {renamingTagId === tag.id ? (
+                  <>
+                    <button type="button" onClick={submitRename} disabled={!renameDraft.trim()}>
+                      {t('save')}
+                    </button>
+                    <button type="button" onClick={() => setRenamingTagId(null)}>
+                      {t('cancel')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => onViewTag(tag.id)}>
+                      {t('view')}
+                    </button>
+                    <button type="button" onClick={() => startRename(tag.id, tag.name)}>
+                      {t('rename')}
+                    </button>
+                    <button type="button" onClick={() => onDeleteTag(tag)}>
+                      {t('deleteAction')}
+                    </button>
+                  </>
+                )}
               </span>
             </div>
           ))

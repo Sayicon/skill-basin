@@ -117,18 +117,22 @@ const ToolsPage = ({
     }
     return !disabledBuiltinTools.has(tool.key)
   }
-  const primaryTools = tools.filter((tool) => tool.installed || tool.is_custom)
-  const missingTools = tools.filter((tool) => !tool.installed && !tool.is_custom)
+  // Classification runs on `detected` (dir exists), NOT `installed`
+  // (detected && enabled): a tool the user toggles off must stay in the main
+  // grid with its toggle visible instead of vanishing into the collapsed
+  // "undetected" section under a false "not detected" label.
+  const primaryTools = tools.filter((tool) => tool.detected || tool.is_custom)
+  const missingTools = tools.filter((tool) => !tool.detected && !tool.is_custom)
   const totalCount = tools.length
   const enabledCount = tools.filter(isToolEnabled).length
-  const detectedCount = tools.filter((tool) => tool.installed).length
+  const detectedCount = tools.filter((tool) => tool.detected).length
   const customCount = tools.filter((tool) => tool.is_custom).length
 
   const renderToolCard = (tool: (typeof tools)[number]) => {
     const enabled = isToolEnabled(tool)
     return (
       <div
-        className={`tool-card${!tool.installed ? ' missing' : ''}`}
+        className={`tool-card${!tool.detected ? ' missing' : ''}`}
         key={tool.key}
       >
         <div className="tool-card-head">
@@ -171,10 +175,10 @@ const ToolsPage = ({
         <div className="tool-card-badges">
           <span
             className={`tool-management-status ${
-              tool.installed ? 'installed' : 'missing'
+              tool.detected ? 'installed' : 'missing'
             }`}
           >
-            {tool.installed
+            {tool.detected
               ? t('toolManagement.detected')
               : t('toolManagement.notDetected')}
           </span>

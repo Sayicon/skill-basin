@@ -91,6 +91,37 @@ fn saving_custom_tool_config_creates_enabled_skills_dir() {
     assert!(created_tool.installed);
 }
 
+#[test]
+fn disabled_tool_with_existing_dir_stays_detected() {
+    // Regression: `installed` conflated "dir exists" with "user enabled it",
+    // so toggling a tool off made it drop into the "not detected" bucket and
+    // vanish from the management UI.
+    let (dir, store) = make_store();
+    let skills_dir = dir.path().join("real-tool-skills");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![CustomToolConfig {
+                key: "custom_real".to_string(),
+                label: "Real Tool".to_string(),
+                skills_dir: skills_dir.to_string_lossy().to_string(),
+                project_skills_dir: None,
+                enabled: false,
+            }],
+        },
+    )
+    .unwrap();
+
+    let tools = runtime_tools(&store, true).unwrap();
+    let tool = tools.iter().find(|t| t.key == "custom_real").unwrap();
+    assert!(tool.detected, "dir exists -> stays detected");
+    assert!(!tool.enabled);
+    assert!(!tool.installed, "disabled tool is not a sync target");
+}
+
 fn make_basin(dir: &std::path::Path, store: &SkillStore) -> std::path::PathBuf {
     let basin_dir = dir.join("basin");
     crate::core::basin::basin_init(&basin_dir, "test", "2026-07-09").unwrap();
@@ -113,6 +144,67 @@ fn mcp_agent_entry() -> AgentEntry {
         source: None,
         custom: true,
     }
+}
+
+#[test]
+fn set_skill_pin_core_reports_conflict_instead_of_silent_success() {
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+
+    let src = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("SKILL.md"), "v1").unwrap();
+    crate::core::basin::add_skill_version(
+        &basin_dir,
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-09",
+        None,
+    )
+    .unwrap();
+
+    // An UNMANAGED dir (no sidecar manifest) already occupies the target.
+    let tool_dir = dir.path().join("tool-skills");
+    std::fs::create_dir_all(tool_dir.join("demo")).unwrap();
+    std::fs::write(tool_dir.join("demo").join("SKILL.md"), "user's own").unwrap();
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![CustomToolConfig {
+                key: "custom_qa".to_string(),
+                label: "QA".to_string(),
+                skills_dir: tool_dir.to_string_lossy().to_string(),
+                project_skills_dir: None,
+                enabled: true,
+            }],
+        },
+    )
+    .unwrap();
+
+    let out =
+        set_skill_pin_core(&store, "demo", "1.0.0", "custom_qa", PinTarget::default()).unwrap();
+
+    // The pin is recorded, but the refused sync must surface in `results`
+    // instead of being dropped (the UI showed "pinned" over a no-op).
+    assert_eq!(out.pins.pins.len(), 1);
+    let failed: Vec<_> = out.results.iter().filter(|r| !r.ok).collect();
+    assert_eq!(
+        failed.len(),
+        1,
+        "conflict must be reported: {:?}",
+        out.results
+    );
+    assert!(failed[0]
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("unmanaged"));
+    assert_eq!(
+        std::fs::read_to_string(tool_dir.join("demo").join("SKILL.md")).unwrap(),
+        "user's own",
+        "unmanaged dir must stay untouched"
+    );
 }
 
 #[test]

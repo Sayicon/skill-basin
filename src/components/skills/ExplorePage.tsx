@@ -36,6 +36,14 @@ const ExplorePage = ({
   onOpenManualAdd,
   t,
 }: ExplorePageProps) => {
+  // Some feed entries carry a bare YAML block-scalar indicator ("|-", ">")
+  // instead of a real summary — the generator failed on a multi-line
+  // description. Render those as empty rather than leaking the token.
+  const cleanSummary = (summary: string) => {
+    const trimmed = summary.trim()
+    return /^[|>][+-]?$/.test(trimmed) ? '' : trimmed
+  }
+
   const filteredSkills = useMemo(() => {
     if (!exploreFilter.trim()) return featuredSkills
     const lower = exploreFilter.toLowerCase()
@@ -143,7 +151,7 @@ const ExplorePage = ({
                           </button>
                         )}
                       </div>
-                      <div className="explore-card-desc">{skill.summary}</div>
+                      <div className="explore-card-desc">{cleanSummary(skill.summary)}</div>
                       <div className="explore-card-bottom">
                         <div className="explore-card-stats">
                           <span className="explore-stat">
