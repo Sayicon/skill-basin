@@ -420,6 +420,7 @@ export const resources = {
         licenseMissing: 'No license',
         licenseMissingHint:
           'This source declares no license. Without one you have no permission to use or redistribute the skill.',
+        installAnyway: 'Install {{name}} anyway?',
       },
       exploreFeaturedTitle: 'Featured',
       exploreOnlineTitle: 'Online Results',
@@ -572,6 +573,7 @@ export const resources = {
         export: 'Export as zip',
         exported: 'Exported to {{path}}',
         exportFailed: 'Export failed',
+        pinnedMode: 'pinned',
       },
       sharedDirConfirm:
         'Note: {{tool}} shares the same skills directory with {{others}}. This change will affect all of them. Continue?',
@@ -1044,6 +1046,7 @@ export const resources = {
         licenseMissing: 'Lisans yok',
         licenseMissingHint:
           'Bu kaynak bir lisans belirtmiyor. Lisans olmadan skill\'i kullanma veya dağıtma iznin yok.',
+        installAnyway: '{{name}} yine de kurulsun mu?',
       },
       exploreFeaturedTitle: 'Öne Çıkanlar',
       exploreOnlineTitle: 'Çevrimiçi Sonuçlar',
@@ -1195,6 +1198,7 @@ export const resources = {
         export: 'Zip olarak dışa aktar',
         exported: '{{path}} konumuna aktarıldı',
         exportFailed: 'Dışa aktarma başarısız',
+        pinnedMode: 'pinli',
       },
       sharedDirConfirm:
         'Not: {{tool}}, {{others}} ile aynı skills dizinini paylaşıyor. Bu değişiklik hepsini etkiler. Devam edilsin mi?',
@@ -1652,6 +1656,7 @@ export const resources = {
         licenseKnown: '许可证：{{license}}',
         licenseMissing: '无许可证',
         licenseMissingHint: '此来源未声明许可证。没有许可证，你无权使用或分发该 Skill。',
+        installAnyway: '仍要安装 {{name}} 吗？',
       },
       exploreFeaturedTitle: '精选推荐',
       exploreOnlineTitle: '在线搜索',
@@ -1795,6 +1800,7 @@ export const resources = {
         export: '导出为 zip',
         exported: '已导出到 {{path}}',
         exportFailed: '导出失败',
+        pinnedMode: '已固定',
       },
       sharedDirConfirm:
         '提示：{{tool}} 与 {{others}} 共用同一个 skills 目录，本次修改会同时影响它们。是否继续？',

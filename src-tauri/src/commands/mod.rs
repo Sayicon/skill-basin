@@ -1847,10 +1847,49 @@ pub async fn delete_managed_skill(
         .map_err(format_anyhow_error)
 }
 
+/// Drops every pin for `skill_name` on this machine and syncs, so the managed
+/// installs a pin created disappear along with the skill. Pins live in the
+/// basin rather than the SQLite target table, so deleting a skill without this
+/// left an orphaned link in each pinned tool's directory.
+fn unpin_everywhere(store: &SkillStore, skill_name: &str) -> anyhow::Result<Vec<String>> {
+    let Some(basin_dir) = configured_basin_dir(store)? else {
+        return Ok(Vec::new());
+    };
+    let machine = current_machine_id(store)?;
+    let pins = read_machine_pins_or_empty(&basin_dir, &machine)?;
+    let pinned_tools: Vec<String> = pins
+        .pins
+        .iter()
+        .filter(|entry| entry.skill == skill_name)
+        .flat_map(|entry| entry.targets.keys().cloned())
+        .collect();
+    if pinned_tools.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let config = load_tool_config(store)?;
+    let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
+    let mut failures = Vec::new();
+    for tool in &pinned_tools {
+        match unset_pin(&basin_dir, &machine, skill_name, tool, &tool_dirs) {
+            Ok((_, results)) => failures.extend(
+                results
+                    .into_iter()
+                    .filter(|result| !result.ok)
+                    .map(|result| format!("{}: {}", result.tool, result.error.unwrap_or_default())),
+            ),
+            Err(err) => failures.push(format!("{tool}: {err:#}")),
+        }
+    }
+    crate::core::basin::basin_commit_all(&basin_dir, &format!("unpin {skill_name} (deleted)"))?;
+    Ok(failures)
+}
+
 fn delete_managed_skill_core(store: &SkillStore, skill_id: &str) -> anyhow::Result<()> {
     // Targets must be read before the skills row goes away: deleting the row
     // cascades into skill_targets and the target paths would be lost.
     let targets = store.list_skill_targets(skill_id)?;
+    let skill_name = store.get_skill_by_id(skill_id)?.map(|skill| skill.name);
 
     // Several tools can share one skills directory (and therefore one target
     // path) — clean each path once so one real failure isn't reported N times.
@@ -1863,6 +1902,10 @@ fn delete_managed_skill_core(store: &SkillStore, skill_id: &str) -> anyhow::Resu
         if let Err(err) = remove_path_any(&target.target_path) {
             remove_failures.push(format!("{}: {}", target.target_path, err));
         }
+    }
+
+    if let Some(name) = &skill_name {
+        remove_failures.extend(unpin_everywhere(store, name)?);
     }
 
     if let Some(skill) = store.get_skill_by_id(skill_id)? {

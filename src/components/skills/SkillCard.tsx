@@ -112,14 +112,17 @@ const SkillCard = ({
         .map(([toolId]) => toolId)
     : []
 
-  // Split tools into synced and remaining for badge display
-  const syncedTools: { tool: ToolOption; target: (typeof skill.targets)[0] }[] = []
+  // A tool counts as synced when either system says so: the legacy per-machine
+  // target table, or a basin pin. A pinned tool has the skill on disk, so
+  // showing it as unsynced would contradict the filesystem.
+  const syncedTools: { tool: ToolOption; target?: (typeof skill.targets)[0] }[] = []
   const unsyncedTools: ToolOption[] = []
   for (const tool of installedTools) {
     const target = skill.targets.find(
       (tgt) => tgt.tool === tool.id && (tgt.scope ?? 'global') === skillScope,
     )
-    if (target && (!skillEnabled || target.status !== 'disabled')) {
+    const hasTarget = Boolean(target) && (!skillEnabled || target?.status !== 'disabled')
+    if (hasTarget || pinnedVersionByTool.has(tool.id)) {
       syncedTools.push({ tool, target })
     } else {
       unsyncedTools.push(tool)
@@ -255,7 +258,7 @@ const SkillCard = ({
               key={`${skill.id}-${tool.id}`}
               type="button"
               className="tool-pill active"
-              title={`${tool.label} (${target.mode ?? t('unknown')})`}
+              title={`${tool.label} (${target?.mode ?? t('versions.pinnedMode')})`}
               onClick={() => {
                 if (skillEnabled) void onToggleTool(skill, tool.id)
               }}

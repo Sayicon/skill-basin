@@ -32,6 +32,7 @@ import ImportModal from './components/skills/modals/ImportModal'
 import NewToolsModal from './components/skills/modals/NewToolsModal'
 import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
+import UnlicensedInstallModal from './components/skills/modals/UnlicensedInstallModal'
 import SettingsPage from './components/skills/SettingsPage'
 import ToolsPage from './components/skills/ToolsPage'
 import UpdatesPage from './components/skills/UpdatesPage'
@@ -134,7 +135,10 @@ function App() {
   const [toolConfig, setToolConfig] = useState<ToolConfigDto | null>(null)
   const [showNewToolsModal, setShowNewToolsModal] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
-  const [installLicenseWarning, setInstallLicenseWarning] = useState(false)
+  const [pendingUnlicensedInstall, setPendingUnlicensedInstall] = useState<{
+    sourceUrl: string
+    skillName?: string
+  } | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [pendingSharedToggle, setPendingSharedToggle] = useState<{
     skill: ManagedSkill
@@ -1348,8 +1352,6 @@ function App() {
     resetInstallScope()
     setShowAddModal(true)
     setAddModalTagIds([])
-    // A hand-typed URL carries no license claim either way.
-    setInstallLicenseWarning(false)
   }, [resetInstallScope])
 
   const applySelectedAddModalTags = useCallback(
@@ -2643,13 +2645,10 @@ function App() {
   const [exploreInstallTrigger, setExploreInstallTrigger] = useState(0)
   const exploreInstallUrlRef = useRef<string | null>(null)
 
-  const handleExploreInstall = useCallback(
-    (sourceUrl: string, skillName?: string, license?: string | null) => {
+  const startExploreInstall = useCallback(
+    (sourceUrl: string, skillName?: string) => {
       resetInstallScope()
       setGitUrl(sourceUrl)
-      // Featured entries carry no license data at all, so only an explicit
-      // null/empty from a search result means "the source declares none".
-      setInstallLicenseWarning(license !== undefined && !license)
       if (skillName) setAutoSelectSkillName(skillName)
       if (toolStatus) {
         const targets: Record<string, boolean> = {}
@@ -2663,6 +2662,28 @@ function App() {
     },
     [resetInstallScope, toolStatus],
   )
+
+  const handleExploreInstall = useCallback(
+    (sourceUrl: string, skillName?: string, license?: string | null) => {
+      // Explore installs immediately, with no modal to carry a warning, so an
+      // unlicensed skill has to be confirmed before anything is fetched.
+      // Featured entries report no license either way; only an explicit
+      // null/empty from a search result means "the source declares none".
+      if (license !== undefined && !license) {
+        setPendingUnlicensedInstall({ sourceUrl, skillName })
+        return
+      }
+      startExploreInstall(sourceUrl, skillName)
+    },
+    [startExploreInstall],
+  )
+
+  const handleConfirmUnlicensedInstall = useCallback(() => {
+    if (!pendingUnlicensedInstall) return
+    const { sourceUrl, skillName } = pendingUnlicensedInstall
+    setPendingUnlicensedInstall(null)
+    startExploreInstall(sourceUrl, skillName)
+  }, [pendingUnlicensedInstall, startExploreInstall])
 
   useEffect(() => {
     if (exploreInstallTrigger > 0 && exploreInstallUrlRef.current && !loading) {
@@ -3587,11 +3608,19 @@ function App() {
         )}
       </main>
 
+      <UnlicensedInstallModal
+        open={Boolean(pendingUnlicensedInstall)}
+        loading={loading}
+        skillName={pendingUnlicensedInstall?.skillName}
+        onRequestClose={() => setPendingUnlicensedInstall(null)}
+        onConfirm={handleConfirmUnlicensedInstall}
+        t={t}
+      />
+
       <AddSkillModal
         open={showAddModal}
         loading={loading}
         canClose={!loading}
-        licenseWarning={installLicenseWarning}
         addModalTab={addModalTab}
         localPath={localPath}
         localName={localName}

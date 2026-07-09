@@ -528,6 +528,80 @@ fn delete_managed_skill_core_removes_links_central_and_record() {
 }
 
 #[test]
+fn delete_managed_skill_core_also_unpins_and_removes_pinned_installs() {
+    // Pins live in the basin, not in the SQLite target table, so a skill
+    // installed by pinning left an orphaned link in every tool directory when
+    // it was deleted: the record vanished, the junction stayed.
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+
+    let src = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("SKILL.md"), "v1").unwrap();
+    crate::core::basin::add_skill_version(
+        &basin_dir,
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-09",
+        None,
+    )
+    .unwrap();
+
+    let tool_dir = dir.path().join("tool-skills");
+    std::fs::create_dir_all(&tool_dir).unwrap();
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![CustomToolConfig {
+                key: "custom_qa".to_string(),
+                label: "QA".to_string(),
+                skills_dir: tool_dir.to_string_lossy().to_string(),
+                project_skills_dir: None,
+                enabled: true,
+            }],
+        },
+    )
+    .unwrap();
+
+    let central = dir.path().join("central").join("demo");
+    std::fs::create_dir_all(&central).unwrap();
+    std::fs::write(central.join("SKILL.md"), "v1").unwrap();
+    store
+        .upsert_skill(&SkillRecord {
+            id: "pinned-skill".to_string(),
+            name: "demo".to_string(),
+            description: None,
+            source_type: "local".to_string(),
+            source_ref: None,
+            source_subpath: None,
+            source_revision: None,
+            central_path: central.to_string_lossy().to_string(),
+            content_hash: None,
+            created_at: 0,
+            updated_at: 0,
+            last_sync_at: None,
+            last_seen_at: 0,
+            enabled: true,
+            status: "active".to_string(),
+        })
+        .unwrap();
+
+    set_skill_pin_core(&store, "demo", "1.0.0", "custom_qa", PinTarget::default()).unwrap();
+    let installed = tool_dir.join("demo");
+    assert!(installed.exists(), "pin should have installed the skill");
+
+    delete_managed_skill_core(&store, "pinned-skill").unwrap();
+
+    assert!(!installed.exists(), "pinned install must be removed too");
+    let pins =
+        read_machine_pins_or_empty(&basin_dir, &current_machine_id(&store).unwrap()).unwrap();
+    assert!(pins.pins.is_empty(), "pin must be dropped: {:?}", pins.pins);
+    // The basin keeps its history; only the tool-side install disappears.
+    assert!(crate::core::basin::version_dir(&basin_dir, "demo", "1.0.0").exists());
+}
+
+#[test]
 fn delete_managed_skill_core_handles_tools_sharing_one_target_path() {
     use crate::core::skill_store::SkillTargetRecord;
 

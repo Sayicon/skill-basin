@@ -4081,6 +4081,12 @@
   margin-top: 1px;
 }
 
+.modal-license-target {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
 .explore-scroll {
   flex: 1;
   overflow-y: auto;
