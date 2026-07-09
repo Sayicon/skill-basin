@@ -1,0 +1,17 @@
+id: no-raw-remove-file
+language: rust
+severity: error
+message: >-
+  std::fs::remove_file on a path that may be a directory junction or dir
+  symlink fails with os error 5 on Windows.
+note: >-
+  Use core::sync_engine::remove_path_any, which inspects symlink_metadata and
+  falls back to remove_dir for directory links. Skill deletion, unsync, and
+  disable all shipped this bug. If the path is provably a plain file (a lock
+  file, a manifest), silence this rule with a comment naming that reason.
+files:
+  - src-tauri/src/**/*.rs
+ignores:
+  - src-tauri/src/core/sync_engine.rs
+rule:
+  pattern: std::fs::remove_file($$$ARGS)

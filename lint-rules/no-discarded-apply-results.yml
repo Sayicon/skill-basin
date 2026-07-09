@@ -1,0 +1,23 @@
+id: no-discarded-apply-results
+language: rust
+severity: error
+message: >-
+  A command handler is discarding part of a core function's return value.
+note: >-
+  Commands are the only place these results reach the user. set_pin returns
+  (pins, results) and the handler wrote `let (pins, _results) = ...`, so a
+  refused sync — an unmanaged directory the engine correctly refused to
+  overwrite — still toasted "pinned" at the user. If a value is genuinely
+  irrelevant, bind it under a real name and say why in a comment; do not
+  discard it in the pattern.
+files:
+  - src-tauri/src/commands/**/*.rs
+ignores:
+  - src-tauri/src/commands/tests/**
+rule:
+  any:
+    - pattern: let ($A, $B) = $CALL;
+    - pattern: let ($A, $B) = $CALL?;
+constraints:
+  B:
+    regex: '^_'

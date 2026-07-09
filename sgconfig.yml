@@ -1,0 +1,7 @@
+# ast-grep configuration.
+#
+# These rules encode bug classes this codebase has actually shipped, so they
+# cannot silently return. Run with `npm run lint:rules`; CI runs the same.
+# (Semgrep would fit too but has no first-class Windows support.)
+ruleDirs:
+  - lint-rules

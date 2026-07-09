@@ -21,6 +21,9 @@ jobs:
       - run: npm ci
       - run: npm run version:check
       - run: npm run lint
+      # Structural rules encoding bug classes this codebase has actually
+      # shipped (see docs in lint-rules/). Cheap, and they never regress.
+      - run: npm run lint:rules
       - run: npm run build
 
   rust:

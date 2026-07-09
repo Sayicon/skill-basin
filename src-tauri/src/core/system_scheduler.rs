@@ -313,6 +313,7 @@ fn uninstall_macos_launch_agent() -> Result<()> {
         .join(format!("{TASK_LABEL}.plist"));
     let _ = Command::new("launchctl").arg("unload").arg(&plist).output();
     if plist.exists() {
+        // ast-grep-ignore: no-raw-remove-file — a plist we authored; macOS-only path.
         std::fs::remove_file(&plist).with_context(|| format!("remove {:?}", plist))?;
     }
     Ok(())
@@ -504,6 +505,7 @@ fn uninstall_linux_systemd_timer() -> Result<()> {
     for ext in ["service", "timer"] {
         let path = dir.join(format!("{TASK_LABEL}.{ext}"));
         if path.exists() {
+            // ast-grep-ignore: no-raw-remove-file — systemd units we authored; Linux-only path.
             std::fs::remove_file(&path).with_context(|| format!("remove {:?}", path))?;
         }
     }

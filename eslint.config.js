@@ -19,5 +19,12 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // WebView2 does not implement the native JS dialogs: confirm() returns
+      // undefined without ever showing anything and prompt() is unreliable,
+      // so a dialog-based flow is a dead button in the packaged app. Use the
+      // in-app modal components instead.
+      'no-alert': 'error',
+    },
   },
 ])

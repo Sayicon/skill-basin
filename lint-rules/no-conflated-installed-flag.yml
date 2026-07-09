@@ -1,0 +1,19 @@
+id: no-conflated-installed-flag
+language: rust
+severity: error
+message: >-
+  "Is the tool present on disk" and "did the user enable it" are being folded
+  into one boolean.
+note: >-
+  runtime_tools once computed `installed = adapter.enabled && is_installed()`,
+  so disabling a tool made it read as "not detected": its card vanished from
+  the management grid into a collapsed section under a false label, and every
+  disable/enable round trip fired a bogus "new tool detected" notification.
+  Keep `detected` (dir exists) and `enabled` (user choice) as separate fields
+  and derive anything else from both.
+files:
+  - src-tauri/src/**/*.rs
+rule:
+  any:
+    - pattern: $X.enabled && $X.is_installed()
+    - pattern: $X.is_installed() && $X.enabled

@@ -7,12 +7,13 @@
     "dev": "vite --port 5173 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:rules": "ast-grep scan",
     "test": "vitest run",
     "rust:fmt": "cd src-tauri && cargo fmt --all",
     "rust:fmt:check": "cd src-tauri && cargo fmt --all -- --check",
     "rust:clippy": "cd src-tauri && cargo clippy --all-targets --all-features -- -D warnings",
     "rust:test": "cd src-tauri && cargo test",
-    "check": "npm run lint && npm run test && npm run build && npm run rust:fmt:check && npm run rust:clippy && npm run rust:test",
+    "check": "npm run lint && npm run lint:rules && npm run test && npm run build && npm run rust:fmt:check && npm run rust:clippy && npm run rust:test",
     "preview": "vite preview",
     "vendor:agents": "node scripts/vendor-agents.mjs",
     "version:set": "node scripts/version.mjs set",
@@ -54,6 +55,7 @@
     "tailwindcss": "^4.1.18"
   },
   "devDependencies": {
+    "@ast-grep/cli": "^0.44.1",
     "@eslint/js": "^9.39.2",
     "@tauri-apps/cli": "^2.9.6",
     "@types/node": "^24.10.7",

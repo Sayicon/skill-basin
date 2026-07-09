@@ -126,6 +126,7 @@ pub fn clone_or_pull_sparse(
             let lock_path = git_dir.join(lock_name);
             if lock_path.exists() {
                 log::warn!("[git_fetcher] removing stale lock file: {:?}", lock_path);
+                // ast-grep-ignore: no-raw-remove-file — git lock files are plain files.
                 let _ = std::fs::remove_file(&lock_path);
             }
         }
@@ -424,6 +425,7 @@ fn clone_or_pull_via_git_cli(
             let lock_path = git_dir.join(lock_name);
             if lock_path.exists() {
                 log::warn!("[git_fetcher] removing stale lock file: {:?}", lock_path);
+                // ast-grep-ignore: no-raw-remove-file — git lock files are plain files.
                 let _ = std::fs::remove_file(&lock_path);
             }
         }

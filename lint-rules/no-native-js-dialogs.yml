@@ -1,0 +1,19 @@
+id: no-native-js-dialogs
+language: tsx
+severity: error
+message: Native JS dialogs do nothing in the packaged Tauri app.
+note: >-
+  WebView2 does not implement window.alert/confirm/prompt: confirm() returns
+  undefined without showing anything, so a confirmation gate silently blocks
+  or silently passes. Tag rename and the shared-directory confirmation both
+  shipped dead this way. Use the in-app modal components (SharedDirModal,
+  inline edit) instead. ESLint's no-alert covers the bare calls; this catches
+  the window-qualified form too.
+files:
+  - src/**/*.ts
+  - src/**/*.tsx
+rule:
+  any:
+    - pattern: window.alert($$$ARGS)
+    - pattern: window.confirm($$$ARGS)
+    - pattern: window.prompt($$$ARGS)

@@ -390,6 +390,8 @@ pub fn apply_plan(basin_dir: &Path, plan: &[PlanAction]) -> Result<Vec<ApplyResu
                 let removed = crate::core::sync_engine::remove_path_any(target).and_then(|()| {
                     let manifest = manifest_path_for(target);
                     if manifest.exists() {
+                        // The sidecar manifest is a plain JSON file we wrote, never a link.
+                        // ast-grep-ignore: no-raw-remove-file
                         std::fs::remove_file(&manifest)
                             .with_context(|| format!("remove manifest {:?}", manifest))?;
                     }
