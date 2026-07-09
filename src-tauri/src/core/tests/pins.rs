@@ -206,6 +206,28 @@ fn planner_removes_only_managed_dirs() {
 }
 
 #[test]
+fn planner_ignores_loose_files_and_manifests_in_a_tool_dir() {
+    // The manifest sidecars live next to their targets, so scanning a tool
+    // directory sees them as entries too; only something with its own
+    // manifest counts as managed.
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    let pins = MachinePins {
+        machine: "m".to_string(),
+        pins: vec![pin("demo", "1.0.0", &["claude_code"])],
+    };
+    apply_plan(basin.path(), &plan_sync(&pins, &dirs).unwrap()).unwrap();
+    assert!(manifest_path_for(&claude.path().join("demo")).exists());
+
+    fs::write(claude.path().join("README.md"), "hand-written note").unwrap();
+
+    // Converged state: the manifest file and the loose file produce no work.
+    assert!(plan_sync(&pins, &dirs).unwrap().is_empty());
+}
+
+#[test]
 fn planner_flags_unmanaged_dir_at_target_as_conflict() {
     let _basin = fixture_basin();
     let claude = tempfile::tempdir().unwrap();
@@ -268,6 +290,82 @@ fn set_pin_creates_and_installs_on_first_call() {
     assert_eq!(pins.pins[0].version, "1.0.0");
     assert!(results.iter().all(|r| r.ok));
     assert!(claude.path().join("demo").join("SKILL.md").exists());
+}
+
+#[test]
+fn set_pin_leaves_other_skills_pins_for_the_same_tool_alone() {
+    // Pinning one skill must only re-point that skill. The pruning loop keys
+    // on `entry.skill == skill && entry.version != version`; relaxing that
+    // conjunction unpins every other skill sitting on a different version
+    // from the same tool. Note the versions must differ for this to bite —
+    // solo is on 1.0.0 while demo moves to 2.0.0.
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    set_pin(
+        basin.path(),
+        "m",
+        "solo",
+        "1.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+    let (pins, results) = set_pin(
+        basin.path(),
+        "m",
+        "demo",
+        "2.0.0",
+        "claude_code",
+        PinTarget::default(),
+        &dirs,
+    )
+    .unwrap();
+
+    assert!(results.iter().all(|r| r.ok), "{results:?}");
+    let solo = pins
+        .pins
+        .iter()
+        .find(|entry| entry.skill == "solo")
+        .expect("solo's pin must survive pinning demo");
+    assert!(solo.targets.contains_key("claude_code"));
+    assert!(claude.path().join("solo").exists(), "solo stays installed");
+    assert!(claude.path().join("demo").exists());
+}
+
+#[test]
+fn unset_pin_leaves_other_skills_alone() {
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    for (skill, version) in [("demo", "1.0.0"), ("solo", "1.0.0")] {
+        set_pin(
+            basin.path(),
+            "m",
+            skill,
+            version,
+            "claude_code",
+            PinTarget::default(),
+            &dirs,
+        )
+        .unwrap();
+    }
+
+    let (pins, results) = unset_pin(basin.path(), "m", "demo", "claude_code", &dirs).unwrap();
+
+    assert!(results.iter().all(|r| r.ok), "{results:?}");
+    assert_eq!(
+        pins.pins.len(),
+        1,
+        "only solo's pin remains: {:?}",
+        pins.pins
+    );
+    assert_eq!(pins.pins[0].skill, "solo");
+    assert!(!claude.path().join("demo").exists());
+    assert!(claude.path().join("solo").exists(), "solo stays installed");
 }
 
 #[test]

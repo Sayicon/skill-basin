@@ -160,8 +160,9 @@ pub fn set_pin(
             entry.targets.remove(tool);
         }
     }
-    pins.pins
-        .retain(|entry| !(entry.skill == skill && entry.targets.is_empty()));
+    // An entry nobody targets anymore is noise in the lockfile, whichever
+    // skill it belonged to.
+    pins.pins.retain(|entry| !entry.targets.is_empty());
 
     match pins
         .pins
@@ -203,8 +204,7 @@ pub fn unset_pin(
             entry.targets.remove(tool);
         }
     }
-    pins.pins
-        .retain(|entry| !(entry.skill == skill && entry.targets.is_empty()));
+    pins.pins.retain(|entry| !entry.targets.is_empty());
 
     write_machine_pins(basin_dir, &pins)?;
     let plan = plan_sync(&pins, tool_dirs)?;
@@ -254,11 +254,11 @@ pub fn plan_sync(
             continue; // tool dir may not exist yet — nothing managed there
         };
         for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() && std::fs::symlink_metadata(&path).is_err() {
-                continue;
-            }
-            if let Some(manifest) = read_managed_manifest(&path) {
+            // A sibling manifest is the only thing that makes an entry ours.
+            // Anything without one — a plain file, a stray directory, the
+            // manifests themselves — reads as None and is skipped, so no
+            // filter on the entry's kind adds anything.
+            if let Some(manifest) = read_managed_manifest(&entry.path()) {
                 let skill = manifest.skill.clone();
                 managed.insert((tool.clone(), skill), manifest);
             }
