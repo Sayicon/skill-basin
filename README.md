@@ -1,192 +1,209 @@
-# Skills Hub (Tauri Desktop)
+# SkillBasin
 
-A cross-platform desktop app (Tauri + React) for installing, organizing, updating, and syncing Agent Skills to multiple AI coding tools' global or project-level skills directories. Skills Hub prefers symlink/junction and automatically falls back to copy when needed: "Install once, sync everywhere".
+A desktop app for managing AI agent skills across every tool you use — from one
+git repository you own.
 
-## Documentation
+Agent skills are just directories, and every coding agent now wants its own copy
+in its own folder. Keep them by hand and the copies drift: the same skill exists
+five times, nobody remembers which one you edited, and changing it for Claude
+Code silently changes it for Cursor too.
 
-- English (default): `README.md` (this file)
-- 中文：[`docs/README.zh.md`](docs/README.zh.md)
+SkillBasin keeps skills in a **basin** — a git repository on your machine, yours,
+no server involved. Each skill is stored **versioned**, and each tool is
+**pinned** to the version you chose for it. Updating a skill adds a new version;
+it never moves a pin. Nothing changes under any agent until you say so.
 
-## Why Skills Hub
+Built on [qufei1993/skills-hub](https://github.com/qufei1993/skills-hub) (MIT).
 
-AI coding tools increasingly use their own skills directories and installation flows. Maintaining those directories manually can quickly become messy: the same skill gets copied many times, update sources become unclear, tool activation states drift, and bulk cleanup takes too much effort.
+## What makes it different
 
-Skills Hub installs skills into one central repository, then syncs them to tools such as Claude Code, Codex, Cursor, OpenCode, and Antigravity based on your choices. You can tag skills, choose global or project scope, update tool targets in bulk, and let the system update Git and local-source skills on a schedule.
+- **Versions, not overwrites.** Pulling a new version of a skill snapshots it
+  into the basin alongside the old one. Your agents keep running the version
+  they were pinned to until you move the pin.
+- **Two agents, two versions, same skill, same machine.** Pin Claude Code to
+  `2.0.0` while Hermes stays on `1.0.0`. This is the whole reason versions are
+  materialized as directories rather than git refs.
+- **Nothing is touched without ownership.** Every managed install carries a
+  sidecar manifest. A directory without one is a directory SkillBasin refuses to
+  overwrite, and it says so instead of failing quietly.
+- **The basin is a git repo you own.** History, rollback, and multi-machine sync
+  come from git. There is no hosted registry, no account, and no server to trust.
+- **Honest tool support.** Adapters are split into tiers, and untested ones say
+  so (see below).
+- **Windows is a first-class platform.** Tests run on Linux, macOS, and Windows.
+  Several path and directory-junction bugs that only appear on Windows are fixed
+  here.
 
-## Key Features
+## Tool support tiers
 
-- **Centralized library**: Install skills into one central repository instead of scattering copies across tool folders.
-- **Explore and install**: Install from curated lists, online search, local folders, or Git repositories.
-- **Multi-tool sync**: Sync skills to different AI coding tools by global or project scope.
-- **Bulk management**: Apply tags, tool targets, enabled state, or delete operations to many skills at once.
-- **Tag organization**: Filter, group, and maintain skills with tags.
-- **Tool management**: Enable built-in tool targets or add custom skills directories.
-- **Automatic updates**: Update Git and local-source skills on a schedule, with visible failure details.
-- **Detail view**: Browse skill file trees, Markdown content, and code snippets.
-- **Migration**: Scan and import existing local skills into one managed library.
+Claiming support for a tool nobody has run is how a sync tool loses trust, so
+adapters are ranked by evidence rather than counted.
 
-## Interface Preview
+**Tier 1 — verified end to end** against a real installation:
 
-### My Skills — Managed Skills and Bulk Actions
+| Tool | Global skills directory | Project skills directory |
+| --- | --- | --- |
+| Claude Code | `~/.claude/skills` | `.claude/skills` |
+| Cursor | `~/.cursor/skills` | `.agents/skills` |
+| Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
+| Hermes | via `skills-mcp` server | — |
 
-My Skills shows each managed skill's source, tags, sync scope, target tools, and enabled state. The toolbar supports scope filtering, sorting, bulk mode, tag filtering, and search.
+**Tier 2 — documented, not verified**: some seventy further adapters, vendored
+from [vercel-labs/skills](https://github.com/vercel-labs/skills) with the source
+commit recorded on every entry. They are wired up and should work, but nobody has
+confirmed them on a real install. Run one successfully and a pull request moves
+it to Tier 1.
+
+Custom directories cover anything not listed, including agents that load skills
+over MCP rather than from a folder.
+
+## How it works
+
+1. **Install** a skill from a local folder, a git repository, or the Explore tab.
+2. It is copied into the basin as a version, and the basin commits the change.
+3. **Pin** each tool to the version you want it to run. SkillBasin syncs by
+   symlink, falls back to a directory junction, then to a copy — whatever the
+   platform and the tool allow.
+4. **Update** the skill later and a new version appears. Pins stay where they
+   are; a badge tells you which tools are behind.
+
+Sharing a skill needs no registry: point someone at your basin's git remote, or
+export any version as a zip.
+
+## Screenshots
+
+### My Skills
+
+Every managed skill with its source, tags, scope, target tools, and the version
+each tool is pinned to. A badge appears when some tool is behind the newest
+version in the basin.
 
 ![My Skills](docs/assets/my-skills.png)
 
-### Explore — Curated Skills and Online Search
+### Skill detail — versions and the pin matrix
 
-Explore brings together curated repository skills and online search. After clicking Install, you can choose tags, install scope, and target tools.
+A skill's version history, and which version each tool runs. Changing a pin
+re-syncs immediately, and a refused sync is reported rather than dressed up as
+success.
+
+![Skill detail](docs/assets/skill-detail.png)
+
+### Explore
+
+Curated skills plus live search, filterable by source. Every result shows its
+license — and says so plainly when there is none, because an unlicensed skill
+grants no rights.
 
 ![Explore](docs/assets/explore-search.png)
 
-### Add Skill — Set Tags, Scope, and Tools Before Installation
+### Management Center
 
-Manual add supports both local folders and Git repositories. Before installing, you can assign tags, choose global or project scope, and choose which tools to sync to.
+Tags, tool targets, and update scheduling in one place. A tool that exists on
+disk stays visible whether or not you have it enabled.
 
-![Add Skill](docs/assets/add-skill-modal.png)
+![Management Center](docs/assets/management-tools.png)
 
-### Management Center — Tags, Tools, and Updates
+### Settings
 
-Management Center keeps tag management, tool targets, and update scheduling in one place. The Updates page supports scheduled updates, manual updates, run summaries, and failure details.
-
-![Management Center Updates](docs/assets/management-updates.png)
-
-### Settings — App-Level Preferences
-
-Settings keeps app-level preferences such as interface language, appearance, storage and cache, GitHub token, network proxy, and app updates.
+Language, appearance, storage, GitHub access, and app updates. Interface
+languages: English, Türkçe, 中文.
 
 ![Settings](docs/assets/settings-page.png)
 
-## Workflow
+## Install
 
-1. Install a skill from Explore, a local folder, or a Git repository.
-2. Choose tags, sync scope, and target tools before installation.
-3. Skills Hub stores the skill in the central repository, which defaults to `~/.skillshub`.
-4. Skills Hub syncs it to global skills directories or project-level skills directories based on each tool's rules.
-5. Later, you can organize, enable/disable, delete, or bulk update skills from My Skills, and configure tool targets or automatic updates from Management Center.
+Download a build for your platform from Releases, or build from source below.
 
-## Supported AI Coding Tools
+Builds are unsigned. On macOS, Gatekeeper may report the app as damaged or from
+an unverified developer; `xattr -cr "/Applications/SkillBasin.app"` clears the
+quarantine attribute ([Tauri docs](https://v2.tauri.app/distribute/#macos)).
 
-Skills Hub includes 46 built-in tool adapters and supports custom skills directories from Management Center. Project skills directories are relative to the selected project root. Tools marked `N/A` do not have a confirmed project-level skills directory and are supported for global sync only.
-
-| tool key | Display name | global skills dir (relative to `~`) | project skills dir (relative to project) | detected if exists (relative to `~`) |
-| --- | --- | --- | --- | --- |
-| `cursor` | Cursor | `.cursor/skills` | `.agents/skills` | `.cursor` |
-| `claude_code` | Claude Code | `.claude/skills` | `.claude/skills` | `.claude` |
-| `codex` | Codex | `.codex/skills` | `.agents/skills` | `.codex` |
-| `opencode` | OpenCode | `.config/opencode/skills` | `.agents/skills` | `.config/opencode` |
-| `antigravity` | Antigravity | `.gemini/config/skills` | `.agents/skills` | `.gemini/config` |
-| `amp` | Amp | `.config/agents/skills` | `.agents/skills` | `.config/agents` |
-| `kimi_cli` | Kimi Code CLI | `.config/agents/skills` | `.agents/skills` | `.config/agents` |
-| `augment` | Augment | `.augment/skills` | `.augment/skills` | `.augment` |
-| `openclaw` | OpenClaw | `.openclaw/skills` | `skills` | `.openclaw` |
-| `copaw` | Copaw | `.copaw/skill_pool` | `.copaw/skill_pool` | `.copaw` |
-| `cline` | Cline | `.agents/skills` | `.agents/skills` | `.agents` |
-| `codebuddy` | CodeBuddy | `.codebuddy/skills` | `.codebuddy/skills` | `.codebuddy` |
-| `codewhale` | CodeWhale | `.codewhale/skills` | `.codewhale/skills` | `.codewhale` |
-| `workbuddy` | WorkBuddy | `.workbuddy/skills` | `N/A` | `.workbuddy` |
-| `command_code` | Command Code | `.commandcode/skills` | `.commandcode/skills` | `.commandcode` |
-| `continue` | Continue | `.continue/skills` | `.continue/skills` | `.continue` |
-| `crush` | Crush | `.config/crush/skills` | `.crush/skills` | `.config/crush` |
-| `junie` | Junie | `.junie/skills` | `.junie/skills` | `.junie` |
-| `iflow_cli` | iFlow CLI | `.iflow/skills` | `.iflow/skills` | `.iflow` |
-| `kiro_cli` | Kiro CLI | `.kiro/skills` | `.kiro/skills` | `.kiro` |
-| `kode` | Kode | `.kode/skills` | `.kode/skills` | `.kode` |
-| `mcpjam` | MCPJam | `.mcpjam/skills` | `.mcpjam/skills` | `.mcpjam` |
-| `mistral_vibe` | Mistral Vibe | `.vibe/skills` | `.vibe/skills` | `.vibe` |
-| `mux` | Mux | `.mux/skills` | `.mux/skills` | `.mux` |
-| `openclaude` | OpenClaude IDE | `.openclaude/skills` | `.openclaude/skills` | `.openclaude` |
-| `openhands` | OpenHands | `.openhands/skills` | `.openhands/skills` | `.openhands` |
-| `pi` | Pi | `.pi/agent/skills` | `.pi/skills` | `.pi` |
-| `qoder` | Qoder | `.qoder/skills` | `.qoder/skills` | `.qoder` |
-| `qoderwork` | QoderWork | `.qoderwork/skills` | `.qoderwork/skills` | `.qoderwork` |
-| `qwen_code` | Qwen Code | `.qwen/skills` | `.qwen/skills` | `.qwen` |
-| `trae` | Trae | `.trae/skills` | `.trae/skills` | `.trae` |
-| `trae_cn` | Trae CN | `.trae-cn/skills` | `.trae/skills` | `.trae-cn` |
-| `zencoder` | Zencoder | `.zencoder/skills` | `.zencoder/skills` | `.zencoder` |
-| `neovate` | Neovate | `.neovate/skills` | `.neovate/skills` | `.neovate` |
-| `pochi` | Pochi | `.pochi/skills` | `.pochi/skills` | `.pochi` |
-| `adal` | AdaL | `.adal/skills` | `.adal/skills` | `.adal` |
-| `kilo_code` | Kilo Code | `.kilocode/skills` | `.kilocode/skills` | `.kilocode` |
-| `roo_code` | Roo Code | `.roo/skills` | `.roo/skills` | `.roo` |
-| `goose` | Goose | `.config/goose/skills` | `.goose/skills` | `.config/goose` |
-| `gemini_cli` | Gemini CLI | `.gemini/skills` | `.agents/skills` | `.gemini` |
-| `github_copilot` | GitHub Copilot | `.copilot/skills` | `.agents/skills` | `.copilot` |
-| `clawdbot` | Clawdbot | `.clawdbot/skills` | `.clawdbot/skills` | `.clawdbot` |
-| `droid` | Droid | `.factory/skills` | `.factory/skills` | `.factory` |
-| `windsurf` | Windsurf | `.codeium/windsurf/skills` | `.windsurf/skills` | `.codeium/windsurf` |
-| `moltbot` | MoltBot | `.moltbot/skills` | `.moltbot/skills` | `.moltbot` |
-| `hermes_agent` | Hermes Agent | `.hermes/skills` | N/A | `.hermes` |
-
-See [`src-tauri/src/core/tool_adapters/mod.rs`](src-tauri/src/core/tool_adapters/mod.rs) for the complete path rules and detection logic.
+| Platform | Status |
+| --- | --- |
+| Windows | Developed and dogfooded here; tested in CI |
+| macOS | Tested in CI; not exercised by hand |
+| Linux | Tested in CI; not exercised by hand |
 
 ## Development
 
-### Prerequisites
-
-- Node.js 18+ (recommended: 20+)
-- Rust (stable)
-- Tauri system dependencies (follow Tauri official docs for your OS)
+Requires Node.js 20+, a stable Rust toolchain, and the
+[Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) for your
+OS.
 
 ```bash
 npm install
 npm run tauri:dev
 ```
 
-### Build
+### Checks
 
 ```bash
-npm run lint
-npm run build
-npm run tauri:build
+npm run check          # lint, structural rules, tests, build, fmt, clippy, cargo test
 ```
 
-#### Platform build commands (from `package.json`)
-
-- macOS (dmg): `npm run tauri:build:mac:dmg`
-- macOS (universal dmg): `npm run tauri:build:mac:universal:dmg`
-- Windows (MSI): `npm run tauri:build:win:msi`
-- Windows (NSIS exe): `npm run tauri:build:win:exe`
-- Windows (MSI+NSIS): `npm run tauri:build:win:all`
-- Linux (deb): `npm run tauri:build:linux:deb`
-- Linux (AppImage): `npm run tauri:build:linux:appimage`
-- Linux (deb+AppImage): `npm run tauri:build:linux:all`
-
-### Tests (Rust)
+Individually:
 
 ```bash
-cd src-tauri
-cargo test
+npm run lint           # ESLint
+npm run lint:rules     # ast-grep rules encoding bug classes this app has shipped
+npm run test           # Vitest
+npm run rust:clippy
 ```
 
-## Contributing & Security
+On Windows, run the Rust tests through `scripts/test-rust.ps1`. Test binaries
+need a Common-Controls manifest linked in, which `cargo test` alone does not do —
+without it they die at load time.
 
-- Contributing: [`CONTRIBUTING.md`](CONTRIBUTING.md)
-- Code of Conduct: [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
-- Security: [`SECURITY.md`](SECURITY.md)
+```powershell
+powershell -File scripts/test-rust.ps1
+```
 
-## FAQ / Notes
+### Packaging
 
-- Where are skills stored? The Central Repo defaults to `~/.skillshub` (configurable in Settings).
-- What are tags for? Tags help you find and organize skills. They do not change where a skill is synced or which tools can use it.
-- What is Management Center for? Management Center handles tags, tool targets, and automatic skill updates. Settings keeps app-level preferences.
-- Does disabling a skill delete files? No. Disabling only removes tool-side sync. The skill and its configuration remain in the Central Repo and can be enabled again later.
-- What does bulk tool setup mean? Skills Hub applies the currently selected tool list to the selected skills. Unchecked tools are removed from those skills' sync targets.
-- What is project-level sync? The skill is still stored once in the Central Repo, but its sync target is a selected project directory such as `<project>/.agents/skills`, `<project>/.claude/skills`, or another tool-specific project skills path.
-- What is a custom tool directory? If an internal tool or wrapped agent has its own skills directory, you can add it in Management Center as a custom sync target.
-- What does automatic update update? It updates Git and local-source skills according to your schedule, then syncs the result to the configured tool targets.
-- Which requests use the network proxy? It affects GitHub API calls, curated skill lists, GitHub Contents downloads, and Git clone/fetch/update flows.
-- Why is Cursor sync always copy? Cursor currently does not support symlink/junction-based skill directories, so Skills Hub forces directory copy when syncing to Cursor.
-- Why does sync sometimes fall back to copy? Skills Hub prefers symlink/junction, but on some systems (especially Windows) symlinks may be restricted; in that case it falls back to directory copy.
-- What does `TARGET_EXISTS|...` mean? The target folder already exists and the operation did not overwrite it (default is non-destructive). Remove the existing folder or retry with the appropriate overwrite flow.
-- macOS Gatekeeper note (unsigned/notarized builds, may vary by macOS version): if you see “damaged” or “unverified developer”, run `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).
+```bash
+npm run tauri:build:win:msi        # or :win:exe, :win:all
+npm run tauri:build:mac:dmg        # or :mac:universal:dmg
+npm run tauri:build:linux:appimage # or :linux:deb, :linux:all
+```
 
-## Supported Platforms
+## Contributing
 
-- macOS (verified)
-- Windows (expected by design; not validated locally)
-- Linux (expected by design; not validated locally)
+Bug reports and pull requests are welcome — moving a Tier 2 adapter to Tier 1 by
+confirming it against a real install is especially useful.
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+
+Structural lint rules live in [`lint-rules/`](lint-rules/); each encodes a bug
+class this codebase has actually shipped, so it cannot return unnoticed.
+
+## FAQ
+
+**Where do skills live?** In the basin, a git repository you choose. A
+per-machine `pins.json` records which tool runs which version, so two machines
+never fight over each other's pins.
+
+**Does updating a skill change what my agents run?** No. An update adds a version
+to the basin. Pins stay put until you move them.
+
+**What happens to a skill I already had in a tool's folder?** Nothing, unless you
+import it. SkillBasin manages only directories it created, which it recognizes by
+a sidecar manifest.
+
+**Why did a sync fall back to copying?** Symlinks are restricted on some systems,
+and Cursor does not follow linked skill directories at all. The engine tries
+symlink, then junction, then copy, and records which mode it used.
+
+**Do tags change behavior?** No. Tags are for finding things. What gets synced
+where is decided only by pins — deleting a tag can never change what an agent
+sees.
+
+**Is there a server?** No registry, no account, no telemetry. Explore reads
+public indexes; everything else is local.
 
 ## License
 
-MIT License — see `LICENSE`.
+MIT — see [`LICENSE`](LICENSE). Forked from
+[qufei1993/skills-hub](https://github.com/qufei1993/skills-hub); see
+[`NOTICE`](NOTICE).
