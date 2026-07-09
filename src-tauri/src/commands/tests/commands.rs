@@ -263,6 +263,125 @@ fn remove_path_any_removes_symlink_only() {
 }
 
 #[test]
+fn remove_path_any_removes_dir_link_without_touching_source() {
+    // Regression: dir junctions/symlinks died with os error 5 on Windows
+    // because the old helper only ever tried remove_file on links.
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("source");
+    std::fs::create_dir_all(&source).unwrap();
+    std::fs::write(source.join("SKILL.md"), "content").unwrap();
+    let link = dir.path().join("link");
+    crate::core::sync_engine::sync_dir_hybrid(&source, &link).unwrap();
+    assert!(link.join("SKILL.md").exists());
+
+    remove_path_any(link.to_string_lossy().as_ref()).unwrap();
+
+    assert!(!link.exists(), "link itself must be gone");
+    assert!(source.join("SKILL.md").exists(), "source must be untouched");
+}
+
+fn seed_deletable_skill(
+    store: &SkillStore,
+    dir: &std::path::Path,
+    tools: &[&str],
+) -> (String, std::path::PathBuf, Vec<std::path::PathBuf>) {
+    use crate::core::skill_store::SkillTargetRecord;
+
+    let central = dir.join("central").join("demo");
+    std::fs::create_dir_all(&central).unwrap();
+    std::fs::write(central.join("SKILL.md"), "demo").unwrap();
+
+    let skill_id = "skill-under-delete".to_string();
+    store
+        .upsert_skill(&SkillRecord {
+            id: skill_id.clone(),
+            name: "demo".to_string(),
+            description: None,
+            source_type: "local".to_string(),
+            source_ref: None,
+            source_subpath: None,
+            source_revision: None,
+            central_path: central.to_string_lossy().to_string(),
+            content_hash: None,
+            created_at: 0,
+            updated_at: 0,
+            last_sync_at: None,
+            last_seen_at: 0,
+            enabled: true,
+            status: "active".to_string(),
+        })
+        .unwrap();
+
+    let mut links = Vec::new();
+    for (i, tool) in tools.iter().enumerate() {
+        let link = dir.join("tools").join(tool).join("demo");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        crate::core::sync_engine::sync_dir_hybrid(&central, &link).unwrap();
+        store
+            .upsert_skill_target(&SkillTargetRecord {
+                id: format!("target-{i}"),
+                skill_id: skill_id.clone(),
+                tool: tool.to_string(),
+                scope: "global".to_string(),
+                project_path: None,
+                target_path: link.to_string_lossy().to_string(),
+                mode: "junction".to_string(),
+                status: "ok".to_string(),
+                last_error: None,
+                synced_at: None,
+            })
+            .unwrap();
+        links.push(link);
+    }
+    (skill_id, central, links)
+}
+
+#[test]
+fn delete_managed_skill_core_removes_links_central_and_record() {
+    let (dir, store) = make_store();
+    let (skill_id, central, links) =
+        seed_deletable_skill(&store, dir.path(), &["claude_code", "cursor"]);
+
+    delete_managed_skill_core(&store, &skill_id).unwrap();
+
+    for link in &links {
+        assert!(!link.exists(), "synced link must be removed: {link:?}");
+    }
+    assert!(!central.exists(), "central copy must be removed");
+    assert!(store.get_skill_by_id(&skill_id).unwrap().is_none());
+}
+
+#[test]
+fn delete_managed_skill_core_handles_tools_sharing_one_target_path() {
+    use crate::core::skill_store::SkillTargetRecord;
+
+    let (dir, store) = make_store();
+    let (skill_id, central, links) = seed_deletable_skill(&store, dir.path(), &["cline"]);
+    // Second tool points at the SAME directory (shared skills dir, like
+    // cline/loaf/warp all using ~/.agents/skills).
+    store
+        .upsert_skill_target(&SkillTargetRecord {
+            id: "target-shared".to_string(),
+            skill_id: skill_id.clone(),
+            tool: "loaf".to_string(),
+            scope: "global".to_string(),
+            project_path: None,
+            target_path: links[0].to_string_lossy().to_string(),
+            mode: "junction".to_string(),
+            status: "ok".to_string(),
+            last_error: None,
+            synced_at: None,
+        })
+        .unwrap();
+
+    delete_managed_skill_core(&store, &skill_id).unwrap();
+
+    assert!(!links[0].exists());
+    assert!(!central.exists());
+    assert!(store.get_skill_by_id(&skill_id).unwrap().is_none());
+}
+
+#[test]
 fn get_managed_skills_impl_maps_targets() {
     let (_dir, store) = make_store();
     let skill = SkillRecord {

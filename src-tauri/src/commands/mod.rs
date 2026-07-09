@@ -1395,7 +1395,7 @@ pub async fn set_skill_enabled(
             store.set_skill_enabled(&skillId, false)?;
             if !remove_failures.is_empty() {
                 anyhow::bail!(
-                    "已停用 Skill，但清理部分工具目录失败：\n- {}",
+                    "Skill disabled, but cleaning some tool directories failed:\n- {}",
                     remove_failures.join("\n- ")
                 );
             }
@@ -1709,66 +1709,54 @@ pub async fn delete_managed_skill(
     skillId: String,
 ) -> Result<(), String> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        // 便于排查“按钮点了没反应”：确认前端确实触发了命令
-        println!("[delete_managed_skill] skillId={}", skillId);
-
-        // 先删除已同步到各工具目录的副本/软链接
-        // 注意：如果先删 skills 行，会触发 skill_targets cascade，导致无法再拿到 target_path
-        let targets = store.list_skill_targets(&skillId)?;
-
-        let mut remove_failures: Vec<String> = Vec::new();
-        for target in targets {
-            if let Err(err) = remove_path_any(&target.target_path) {
-                remove_failures.push(format!("{}: {}", target.target_path, err));
-            }
-        }
-
-        let record = store.get_skill_by_id(&skillId)?;
-        if let Some(skill) = record {
-            let path = std::path::PathBuf::from(skill.central_path);
-            if path.exists() {
-                std::fs::remove_dir_all(&path)?;
-            }
-            store.delete_skill(&skillId)?;
-        }
-
-        if !remove_failures.is_empty() {
-            anyhow::bail!(
-                "已删除托管记录，但清理部分工具目录失败：\n- {}",
-                remove_failures.join("\n- ")
-            );
-        }
-
-        Ok::<_, anyhow::Error>(())
-    })
-    .await
-    .map_err(|err| err.to_string())?
-    .map_err(format_anyhow_error)
+    tauri::async_runtime::spawn_blocking(move || delete_managed_skill_core(&store, &skillId))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
 }
 
-fn remove_path_any(path: &str) -> Result<(), String> {
-    let p = std::path::Path::new(path);
-    if !p.exists() {
-        return Ok(());
+fn delete_managed_skill_core(store: &SkillStore, skill_id: &str) -> anyhow::Result<()> {
+    // Targets must be read before the skills row goes away: deleting the row
+    // cascades into skill_targets and the target paths would be lost.
+    let targets = store.list_skill_targets(skill_id)?;
+
+    // Several tools can share one skills directory (and therefore one target
+    // path) — clean each path once so one real failure isn't reported N times.
+    let mut seen_paths = std::collections::BTreeSet::new();
+    let mut remove_failures: Vec<String> = Vec::new();
+    for target in targets {
+        if !seen_paths.insert(target.target_path.clone()) {
+            continue;
+        }
+        if let Err(err) = remove_path_any(&target.target_path) {
+            remove_failures.push(format!("{}: {}", target.target_path, err));
+        }
     }
 
-    let meta = std::fs::symlink_metadata(p).map_err(|err| err.to_string())?;
-    let ft = meta.file_type();
-
-    // 软链接（即使指向目录）也应该用 remove_file 删除链接本身
-    if ft.is_symlink() {
-        std::fs::remove_file(p).map_err(|err| err.to_string())?;
-        return Ok(());
+    if let Some(skill) = store.get_skill_by_id(skill_id)? {
+        let path = std::path::PathBuf::from(skill.central_path);
+        if path.exists() {
+            std::fs::remove_dir_all(&path)?;
+        }
+        store.delete_skill(skill_id)?;
     }
 
-    if ft.is_dir() {
-        std::fs::remove_dir_all(p).map_err(|err| err.to_string())?;
-        return Ok(());
+    if !remove_failures.is_empty() {
+        anyhow::bail!(
+            "Managed record deleted, but cleaning some tool directories failed:\n- {}",
+            remove_failures.join("\n- ")
+        );
     }
 
-    std::fs::remove_file(p).map_err(|err| err.to_string())?;
     Ok(())
+}
+
+/// String-path adapter over the sync engine's link-aware removal. Directory
+/// junctions and dir symlinks need `remove_dir` on Windows — `remove_file`
+/// fails with os error 5 — and the engine already handles every case.
+fn remove_path_any(path: &str) -> Result<(), String> {
+    crate::core::sync_engine::remove_path_any(std::path::Path::new(path))
+        .map_err(|err| format!("{err:#}"))
 }
 
 fn to_install_dto(result: InstallResult) -> InstallResultDto {
