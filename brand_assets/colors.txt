@@ -1,0 +1,35 @@
+# SkillBasin renk paleti — tek doğruluk kaynağı: src/index.css design token'ları.
+# Bu dosya frontend-quality skill'inin otomatik okuduğu özet; token adlarıyla eşleşir.
+
+## Aksan (tek bilinçli aksan — basin teal; stok Tailwind mavi/indigo YASAK)
+accent-primary (light):  #0e7c90
+accent-primary (dark):   #4bc3d6
+accent-primary-hover (light): #0a6575
+accent-primary-hover (dark):  #6fd2e2
+
+## Light tema (sıcak kağıt tonu — Claude.ai sıcaklığı)
+bg-app:      #f6f5f1
+bg-panel:    #ffffff
+bg-element:  #efece4
+border-subtle: #e3ded2
+border-strong: #d2cbb9
+text-primary:  #1c1a15
+text-secondary: #5c574c
+text-tertiary:  #928c7c
+
+## Dark tema (VARSAYILAN; near-black + belirgin border — Vercel dark disiplini)
+bg-app:      #100f0e
+bg-panel:    #1d1b18
+bg-element:  #292620
+bg-element-hover: #353128
+border-subtle: #393428
+border-strong: #55503f
+text-primary:  #f2efe6
+text-secondary: #c9c3b4
+text-tertiary:  #8d8778
+
+## Durum renkleri (dark / light)
+success: #5fbf7e / #2e7d46
+warning: #d9a93f / #9a6a0b
+error:   #e07b6b / #a63d2f
+info:    aksan rengiyle aynı
