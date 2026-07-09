@@ -242,6 +242,55 @@ fn online_dto_from_skills_sh_carries_its_license_and_origin() {
 }
 
 #[test]
+fn skill_versions_put_the_latest_first_even_within_one_day() {
+    // `added_at` is a date, not a timestamp, so two versions added the same
+    // day tie — and the newest one rendered at the bottom of the list under
+    // a "latest" chip. The latest version leads regardless.
+    let mut versions = vec![
+        SkillVersionDto {
+            label: "2026-07-09.65c9".to_string(),
+            added_at: "2026-07-09".to_string(),
+            is_latest: false,
+        },
+        SkillVersionDto {
+            label: "2026-07-09.8a4a".to_string(),
+            added_at: "2026-07-09".to_string(),
+            is_latest: true,
+        },
+        SkillVersionDto {
+            label: "2026-07-01.aaaa".to_string(),
+            added_at: "2026-07-01".to_string(),
+            is_latest: false,
+        },
+    ];
+
+    sort_skill_versions(&mut versions);
+
+    assert_eq!(versions[0].label, "2026-07-09.8a4a", "latest leads");
+    assert_eq!(versions[1].label, "2026-07-09.65c9");
+    assert_eq!(versions[2].label, "2026-07-01.aaaa", "older days follow");
+}
+
+#[test]
+fn skill_versions_are_ordered_newest_day_first() {
+    let mut versions = vec![
+        SkillVersionDto {
+            label: "old".to_string(),
+            added_at: "2026-07-01".to_string(),
+            is_latest: false,
+        },
+        SkillVersionDto {
+            label: "new".to_string(),
+            added_at: "2026-07-09".to_string(),
+            is_latest: false,
+        },
+    ];
+
+    sort_skill_versions(&mut versions);
+    assert_eq!(versions[0].label, "new");
+}
+
+#[test]
 fn basin_latest_versions_core_maps_every_skill_to_its_latest_label() {
     let (dir, store) = make_store();
     let basin_dir = make_basin(dir.path(), &store);

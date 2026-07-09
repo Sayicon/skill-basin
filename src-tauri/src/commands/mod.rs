@@ -534,6 +534,17 @@ pub fn default_export_file_name(skill: String, version: String) -> String {
     crate::core::export::default_export_file_name(&skill, &version)
 }
 
+/// Newest first. `added_at` is a date, so versions added on the same day tie;
+/// the latest one still has to lead, or the list contradicts its own badge.
+fn sort_skill_versions(versions: &mut [SkillVersionDto]) {
+    versions.sort_by(|a, b| {
+        b.is_latest
+            .cmp(&a.is_latest)
+            .then_with(|| b.added_at.cmp(&a.added_at))
+            .then_with(|| b.label.cmp(&a.label))
+    });
+}
+
 /// Every version of `skill_name` recorded in the basin, newest first.
 #[tauri::command]
 pub async fn list_skill_versions(
@@ -554,7 +565,7 @@ pub async fn list_skill_versions(
                 added_at: info.added_at,
             })
             .collect();
-        versions.sort_by(|a, b| b.added_at.cmp(&a.added_at));
+        sort_skill_versions(&mut versions);
         Ok::<_, anyhow::Error>(versions)
     })
     .await
