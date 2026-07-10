@@ -189,3 +189,13 @@ fn scan_tool_dir_skips_app_support_path() {
     let out = scan_tool_dir(&tool, &root).unwrap();
     assert!(out.is_empty());
 }
+
+#[test]
+fn hermes_global_skills_dir_resolves_under_home_dot_hermes() {
+    // The official image bind-mounts the host's ~/.hermes to /opt/data, so the
+    // home-relative default is exactly where a host-side sync must write.
+    let hermes = adapter_by_key("hermes_agent").unwrap();
+    let resolved = crate::core::tool_adapters::resolve_default_path(&hermes).unwrap();
+    let home = dirs::home_dir().unwrap();
+    assert_eq!(resolved, home.join(".hermes").join("skills"));
+}
