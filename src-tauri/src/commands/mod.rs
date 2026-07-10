@@ -577,16 +577,21 @@ fn resolved_tool_dirs(
     basin_dir: &std::path::Path,
     tool_config: &ToolConfig,
 ) -> anyhow::Result<std::collections::BTreeMap<String, std::path::PathBuf>> {
+    // Disabled tools are not pin targets: keeping them in the map means every
+    // pin operation replans (and keeps writing into) a directory the user
+    // turned off. Absent tools are hands-off on both sides of the planner —
+    // no install/update AND no remove — so re-enabling later self-heals.
     let mut dirs: std::collections::BTreeMap<String, std::path::PathBuf> =
         resolve_all_adapters(basin_dir, tool_config)?
             .into_iter()
+            .filter(|adapter| adapter.enabled)
             .filter_map(|adapter| adapter.skills_dir.map(|dir| (adapter.key, dir)))
             .collect();
     // Legacy SQLite custom tools are pin targets too — leaving them out made
     // pinning to one a silent no-op. An agents.json entry with the same key
     // wins (same rule runtime_tools applies).
     for custom in &tool_config.custom_tools {
-        if dirs.contains_key(&custom.key) {
+        if !custom.enabled || dirs.contains_key(&custom.key) {
             continue;
         }
         dirs.insert(custom.key.clone(), expand_home_path(&custom.skills_dir)?);
@@ -1902,10 +1907,19 @@ fn delete_managed_skill_core(store: &SkillStore, skill_id: &str) -> anyhow::Resu
     let targets = store.list_skill_targets(skill_id)?;
     let skill_name = store.get_skill_by_id(skill_id)?.map(|skill| skill.name);
 
+    // Unpin BEFORE removing target paths: the pin planner discovers managed
+    // installs by scanning tool dirs for a live entry + sidecar manifest. If
+    // a legacy target row already deleted the entry, the planner never sees
+    // it and the manifest is orphaned. Unpinning first removes entry AND
+    // manifest; the target loop below is a no-op on already-gone paths.
+    let mut remove_failures: Vec<String> = Vec::new();
+    if let Some(name) = &skill_name {
+        remove_failures.extend(unpin_everywhere(store, name)?);
+    }
+
     // Several tools can share one skills directory (and therefore one target
     // path) — clean each path once so one real failure isn't reported N times.
     let mut seen_paths = std::collections::BTreeSet::new();
-    let mut remove_failures: Vec<String> = Vec::new();
     for target in targets {
         if !seen_paths.insert(target.target_path.clone()) {
             continue;
@@ -1913,10 +1927,6 @@ fn delete_managed_skill_core(store: &SkillStore, skill_id: &str) -> anyhow::Resu
         if let Err(err) = remove_path_any(&target.target_path) {
             remove_failures.push(format!("{}: {}", target.target_path, err));
         }
-    }
-
-    if let Some(name) = &skill_name {
-        remove_failures.extend(unpin_everywhere(store, name)?);
     }
 
     if let Some(skill) = store.get_skill_by_id(skill_id)? {
