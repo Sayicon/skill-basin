@@ -3176,11 +3176,44 @@ function App() {
           target.status !== 'disabled',
       )
       const synced = matchingTargets.length > 0
+      // Pins are a second install system next to the legacy target table: a
+      // pin-only install renders as synced but has no target row, so the
+      // legacy toggle below would run sync (TARGET_EXISTS, or a duplicate
+      // row over a pin-managed dir) instead of turning it off. Clicking a
+      // pinned pill means unpin — and drop any leftover legacy row too.
+      const pinned =
+        skillScope !== 'project' &&
+        (machinePins?.pins.some(
+          (entry) => entry.skill === skill.name && toolId in entry.targets,
+        ) ??
+          false)
 
       setLoading(true)
       setLoadingStartAt(Date.now())
       setError(null)
       try {
+        if (pinned) {
+          setActionMessage(
+            t('actions.unsyncing', { name: skill.name, tool: toolLabel }),
+          )
+          await invokeTauri('unset_skill_pin', {
+            skill: skill.name,
+            tool: toolId,
+          })
+          if (synced) {
+            await invokeTauri('unsync_skill_from_tool', {
+              skillId: skill.id,
+              tool: toolId,
+              scope: 'global',
+            })
+          }
+          const statusText = t('status.syncDisabled')
+          setSuccessToastMessage(statusText)
+          setActionMessage(null)
+          await loadManagedSkills()
+          await loadMachinePins()
+          return
+        }
         if (synced) {
           setActionMessage(
             t('actions.unsyncing', { name: skill.name, tool: toolLabel }),
@@ -3264,8 +3297,10 @@ function App() {
       getSkillProjects,
       getSkillScope,
       invokeTauri,
+      loadMachinePins,
       loadManagedSkills,
       loading,
+      machinePins,
       t,
       tools,
       toolSupportsProjectScope,
