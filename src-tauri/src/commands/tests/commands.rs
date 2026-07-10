@@ -728,3 +728,166 @@ fn get_managed_skills_impl_maps_targets() {
     assert_eq!(out[0].targets[0].scope, "global");
     assert!(out[0].targets[0].project_path.is_none());
 }
+
+fn custom_tool(key: &str, skills_dir: &std::path::Path, enabled: bool) -> CustomToolConfig {
+    CustomToolConfig {
+        key: key.to_string(),
+        label: key.to_string(),
+        skills_dir: skills_dir.to_string_lossy().to_string(),
+        project_skills_dir: None,
+        enabled,
+    }
+}
+
+#[test]
+fn resolved_tool_dirs_excludes_disabled_tools() {
+    // A disabled tool must not be a pin-sync target: leaving it in the map
+    // keeps the planner installing/updating into a directory the user turned off.
+    let dir = tempfile::tempdir().unwrap();
+    let config = ToolConfig {
+        disabled_builtin_tools: vec!["claude_code".to_string()],
+        custom_tools: vec![
+            custom_tool("custom_on", &dir.path().join("on-skills"), true),
+            custom_tool("custom_off", &dir.path().join("off-skills"), false),
+        ],
+    };
+
+    let dirs = resolved_tool_dirs(dir.path(), &config).unwrap();
+    assert!(
+        !dirs.contains_key("claude_code"),
+        "disabled builtin must drop out of pin targets"
+    );
+    assert!(dirs.contains_key("cursor"), "enabled builtin stays");
+    assert!(dirs.contains_key("custom_on"), "enabled custom tool stays");
+    assert!(
+        !dirs.contains_key("custom_off"),
+        "disabled custom tool must drop out of pin targets"
+    );
+}
+
+fn basin_with_demo_v1(dir: &std::path::Path, store: &SkillStore) -> std::path::PathBuf {
+    let basin_dir = make_basin(dir, store);
+    let src = tempfile::tempdir().unwrap();
+    std::fs::write(src.path().join("SKILL.md"), "v1").unwrap();
+    crate::core::basin::add_skill_version(&basin_dir, "demo", src.path(), "1.0.0", "2026-07-10", None)
+        .unwrap();
+    basin_dir
+}
+
+#[test]
+fn pinning_to_disabled_tool_is_an_error() {
+    let (dir, store) = make_store();
+    let _basin_dir = basin_with_demo_v1(dir.path(), &store);
+
+    let tool_dir = dir.path().join("off-tool-skills");
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![custom_tool("custom_off", &tool_dir, false)],
+        },
+    )
+    .unwrap();
+
+    let err = set_skill_pin_core(&store, "demo", "1.0.0", "custom_off", PinTarget::default())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("TOOL_DIR_UNKNOWN"),
+        "pin to a disabled tool must be refused, got: {err}"
+    );
+}
+
+#[test]
+fn unpinning_while_tool_disabled_leaves_its_files_alone() {
+    let (dir, store) = make_store();
+    let _basin_dir = basin_with_demo_v1(dir.path(), &store);
+
+    let tool_dir = dir.path().join("tool-skills");
+    let config = |enabled: bool| ToolConfig {
+        disabled_builtin_tools: Vec::new(),
+        custom_tools: vec![custom_tool("custom_qa", &tool_dir, enabled)],
+    };
+    save_tool_config(&store, config(true)).unwrap();
+    set_skill_pin_core(&store, "demo", "1.0.0", "custom_qa", PinTarget::default()).unwrap();
+    let target = tool_dir.join("demo");
+    assert!(target.exists(), "pin must install while the tool is enabled");
+
+    // User turns the tool off: SkillBasin stops managing that directory. The
+    // pin record still goes away, but files on disk are hands-off (a later
+    // re-enable lets the planner remove the now-unpinned install).
+    save_tool_config(&store, config(false)).unwrap();
+    let out = unset_skill_pin_core(&store, "demo", "custom_qa").unwrap();
+    assert!(out.pins.pins.is_empty(), "pin record must go away");
+    assert!(target.exists(), "disabled tool's files are hands-off");
+    assert!(
+        crate::core::pins::manifest_path_for(&target).exists(),
+        "manifest stays with the files it describes"
+    );
+}
+
+#[test]
+fn deleting_a_skill_cleans_pin_manifest_when_legacy_target_covers_same_dir() {
+    let (dir, store) = make_store();
+    let basin_dir = basin_with_demo_v1(dir.path(), &store);
+
+    let tool_dir = dir.path().join("tool-skills");
+    save_tool_config(
+        &store,
+        ToolConfig {
+            disabled_builtin_tools: Vec::new(),
+            custom_tools: vec![custom_tool("custom_qa", &tool_dir, true)],
+        },
+    )
+    .unwrap();
+    set_skill_pin_core(&store, "demo", "1.0.0", "custom_qa", PinTarget::default()).unwrap();
+    let target = tool_dir.join("demo");
+    let manifest = crate::core::pins::manifest_path_for(&target);
+    assert!(target.exists() && manifest.exists());
+
+    // Drifted state: a legacy SQLite target row also claims the pinned dir.
+    store
+        .upsert_skill(&SkillRecord {
+            id: "s1".to_string(),
+            name: "demo".to_string(),
+            description: None,
+            source_type: "local".to_string(),
+            source_ref: None,
+            source_subpath: None,
+            source_revision: None,
+            central_path: dir.path().join("central-demo").to_string_lossy().to_string(),
+            content_hash: None,
+            created_at: 1,
+            updated_at: 1,
+            last_sync_at: None,
+            last_seen_at: 1,
+            enabled: true,
+            status: "ok".to_string(),
+        })
+        .unwrap();
+    store
+        .upsert_skill_target(&SkillTargetRecord {
+            id: "t1".to_string(),
+            skill_id: "s1".to_string(),
+            tool: "custom_qa".to_string(),
+            scope: "global".to_string(),
+            project_path: None,
+            target_path: target.to_string_lossy().to_string(),
+            mode: "copy".to_string(),
+            status: "ok".to_string(),
+            last_error: None,
+            synced_at: None,
+        })
+        .unwrap();
+
+    delete_managed_skill_core(&store, "s1").unwrap();
+
+    assert!(!target.exists(), "target dir must be removed");
+    assert!(
+        !manifest.exists(),
+        "sidecar manifest must not be orphaned after delete"
+    );
+    let pins =
+        read_machine_pins_or_empty(&basin_dir, &current_machine_id(&store).unwrap()).unwrap();
+    assert!(pins.pins.is_empty(), "pin record must be gone");
+}
