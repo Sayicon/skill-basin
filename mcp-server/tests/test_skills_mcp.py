@@ -197,7 +197,10 @@ class StdioRoundTripTests(unittest.TestCase):
         )
 
     def tearDown(self):
+        self.proc.stdin.close()
+        self.proc.stdout.close()
         self.proc.terminate()
+        self.proc.wait(timeout=10)
         self.tmp.cleanup()
 
     def test_initialize_list_call_and_error_path(self):
@@ -241,6 +244,8 @@ class HttpRoundTripTests(unittest.TestCase):
 
     def tearDown(self):
         self.proc.terminate()
+        self.proc.wait(timeout=10)
+        self.proc.stdout.close()
         self.tmp.cleanup()
 
     def post(self, payload):

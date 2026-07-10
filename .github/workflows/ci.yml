@@ -26,6 +26,21 @@ jobs:
       - run: npm run lint:rules
       - run: npm run build
 
+  mcp-server:
+    # skills-mcp is pure-stdlib Python; it ships to Linux servers but the
+    # basin it serves lives on any dev OS, so it runs on the same 3-OS matrix.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s mcp-server/tests -v
+
   rust:
     # Upstream only tested on Linux; a whole class of Windows path/manifest bugs
     # shipped unnoticed. SkillBasin tests on every OS we release for.
