@@ -769,8 +769,15 @@ fn basin_with_demo_v1(dir: &std::path::Path, store: &SkillStore) -> std::path::P
     let basin_dir = make_basin(dir, store);
     let src = tempfile::tempdir().unwrap();
     std::fs::write(src.path().join("SKILL.md"), "v1").unwrap();
-    crate::core::basin::add_skill_version(&basin_dir, "demo", src.path(), "1.0.0", "2026-07-10", None)
-        .unwrap();
+    crate::core::basin::add_skill_version(
+        &basin_dir,
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-10",
+        None,
+    )
+    .unwrap();
     basin_dir
 }
 
@@ -811,7 +818,10 @@ fn unpinning_while_tool_disabled_leaves_its_files_alone() {
     save_tool_config(&store, config(true)).unwrap();
     set_skill_pin_core(&store, "demo", "1.0.0", "custom_qa", PinTarget::default()).unwrap();
     let target = tool_dir.join("demo");
-    assert!(target.exists(), "pin must install while the tool is enabled");
+    assert!(
+        target.exists(),
+        "pin must install while the tool is enabled"
+    );
 
     // User turns the tool off: SkillBasin stops managing that directory. The
     // pin record still goes away, but files on disk are hands-off (a later
@@ -855,7 +865,11 @@ fn deleting_a_skill_cleans_pin_manifest_when_legacy_target_covers_same_dir() {
             source_ref: None,
             source_subpath: None,
             source_revision: None,
-            central_path: dir.path().join("central-demo").to_string_lossy().to_string(),
+            central_path: dir
+                .path()
+                .join("central-demo")
+                .to_string_lossy()
+                .to_string(),
             content_hash: None,
             created_at: 1,
             updated_at: 1,
