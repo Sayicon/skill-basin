@@ -1,20 +1,30 @@
 # SkillBasin renk paleti — tek doğruluk kaynağı: src/index.css design token'ları.
 # Bu dosya frontend-quality skill'inin otomatik okuduğu özet; token adlarıyla eşleşir.
 #
-# Tema: "PowerShell ISE" (kaynak: ui.jln.dev vscode-theme portu, Kerem seçimi 2026-07-10).
-# Light = ISE editörü (sarımsı-beyaz kağıt, hue 60 nötr + hue 213 ISE mavisi).
-# Dark = PowerShell konsolunun koyu lacivertinden TÜRETİLDİ (kaynak temada dark yok);
-# aynı mavi/sarı/kırmızı hue'lar kontrast için parlaklaştırıldı.
+# İki tema, ikisi de ui.jln.dev vscode-theme portu (Kerem seçimi 2026-07-10):
+# Dark (VARSAYILAN) = "Aura Dark": menekşe-tonlu koyu yüzeyler (hue 249) + neon nane aksan.
+# Light = "PowerShell ISE": sarımsı-beyaz ISE kağıdı (hue 60) + ISE seçim mavisi (hue 213).
 
-## Aksan (tek bilinçli aksan — ISE mavisi, hue 213)
-accent-primary (light):  #1c4e8c
-accent-primary (dark):   #70a7ea
+## Aksan (tek bilinçli aksan — modda değişir)
+accent-primary (dark):   #61ffca   # Aura neon nane — imza rengi
+accent-primary (light):  #1c4e8c   # ISE mavisi, koyu
+accent-primary-hover (dark):  #85ffd6
 accent-primary-hover (light): #174073
-accent-primary-hover (dark):  #88b7f2
+accent-soft-bg (dark):   #1b372d
 accent-soft-bg (light):  #e1ecf9   # ISE seçim mavisi — rozet/seçili durum dolgusu
-accent-soft-bg (dark):   #1c314a
 
-## Light tema (ISE kağıdı — hue 60 sarımsı nötr)
+## Dark tema (VARSAYILAN; Aura Dark — hue 249 menekşe nötr)
+bg-app:      #0e0d12
+bg-panel:    #15141a
+bg-element:  #23222b
+bg-element-hover: #2a292e
+border-subtle: #2a292e
+border-strong: #373446
+text-primary:  #edecee
+text-secondary: #9e9bb0
+text-tertiary:  #747089
+
+## Light tema (PowerShell ISE kağıdı — hue 60 sarımsı nötr)
 bg-app:      #fffff0
 bg-panel:    #ffffff
 bg-element:  #e9e9e2
@@ -25,19 +35,8 @@ text-primary:  #333333
 text-secondary: #565643
 text-tertiary:  #8b8b7a
 
-## Dark tema (VARSAYILAN; PowerShell konsol laciverti — hue 216)
-bg-app:      #0e1725
-bg-panel:    #162336
-bg-element:  #202f46
-bg-element-hover: #293b57
-border-subtle: #334156
-border-strong: #496083
-text-primary:  #e0eaf5
-text-secondary: #acbdd2
-text-tertiary:  #788aa1
-
 ## Durum renkleri (dark / light)
-success: #5fbf7e / #2e7d46   # ISE'de yeşil yok — önceki temadan korundu
-warning: #dfd249 / #97800c   # ISE sarısı (hue ~55-60)
-error:   #e76b55 / #ba2b12   # ISE destructive (hue 9)
+success: #5fbf7e / #2e7d46   # iki kaynak temada da yeşil yok — önceki paletten korundu
+warning: #d9a93f / #97800c   # dark: korunan amber; light: ISE sarısı
+error:   #f7432b / #ba2b12   # dark: Aura destructive; light: ISE destructive
 info:    aksan rengiyle aynı

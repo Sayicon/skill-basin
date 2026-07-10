@@ -2,11 +2,10 @@
 @import "tailwindcss";
 
 /*
- * Design language: "PowerShell ISE" (ui.jln.dev vscode-theme port) on the
- * warm ISE paper — a faintly yellow-white base (hue 60), ISE selection blue
- * (hue 213) as the one deliberate accent, ISE yellow for warnings. Light
- * mode is the ISE editor; dark mode is the PowerShell console's deep navy
- * (hue 216) — same family, night shift. Vercel's discipline in the
+ * Design language: two ui.jln.dev vscode-theme ports, one per mode.
+ * Dark (default) is "Aura Dark": violet-tinted surfaces (hue 249) + neon
+ * mint accent. Light is "PowerShell ISE": faintly yellow-white paper
+ * (hue 60) + ISE selection blue (hue 213). Vercel's discipline in the
  * type/radius/shadow system stays. Fira Sans/Fira Code: mono for anything
  * data-shaped (versions, paths, counts), sans for prose.
  */
@@ -52,48 +51,47 @@
 
 :root[data-theme='dark'] {
   /*
-   * The source theme ships no dark palette (its .dark block repeats the
-   * light values), so dark mode is derived, not copied: the PowerShell
-   * console's deep navy (hue 216) as the base, with the same ISE blue /
-   * yellow / red hues brightened for contrast. Surface separation still
-   * matters more than exact hues: panels/elements step up in clearly
-   * visible increments and borders read as edges.
+   * "Aura Dark" (ui.jln.dev vscode-theme port) — violet-tinted dark surfaces
+   * (hue 249) with Aura's signature neon mint (#61ffca) as the accent. The
+   * surface ladder maps straight from the source palette (popover → app,
+   * background → panel, muted → element, input → hover), so separation
+   * comes from the theme's own steps plus borders reading as edges.
    */
-  --bg-app: #0e1725;
-  --bg-panel: #162336;
-  --bg-element: #202f46;
-  --bg-element-hover: #293b57;
-  --bg-header: rgba(14, 23, 37, 0.85);
-  --border-subtle: #334156;
-  --border-strong: #496083;
-  --text-primary: #e0eaf5;
-  --text-secondary: #acbdd2;
-  --text-tertiary: #788aa1;
-  --accent-primary: #70a7ea;
-  --accent-primary-hover: #88b7f2;
-  --accent-primary-fg: #0a1424;
-  --accent-soft-bg: #1c314a;
-  --accent-soft-border: #2d4e76;
+  --bg-app: #0e0d12;
+  --bg-panel: #15141a;
+  --bg-element: #23222b;
+  --bg-element-hover: #2a292e;
+  --bg-header: rgba(14, 13, 18, 0.85);
+  --border-subtle: #2a292e;
+  --border-strong: #373446;
+  --text-primary: #edecee;
+  --text-secondary: #9e9bb0;
+  --text-tertiary: #747089;
+  --accent-primary: #61ffca;
+  --accent-primary-hover: #85ffd6;
+  --accent-primary-fg: #002e1f;
+  --accent-soft-bg: #1b372d;
+  --accent-soft-border: #2d5346;
   --success-soft-bg: #17301f;
   --success-soft-border: #2a5236;
   --status-success: #5fbf7e;
-  --status-warning: #dfd249;
-  --status-error: #e76b55;
-  --status-info: #70a7ea;
-  --warning-soft-bg: #3b3816;
-  --warning-soft-border: #686227;
-  --danger-soft-bg: #3f1e18;
-  --danger-soft-border: #683127;
-  --danger-soft-bg-strong: #4e251d;
+  --status-warning: #d9a93f;
+  --status-error: #f7432b;
+  --status-info: #61ffca;
+  --warning-soft-bg: #332a15;
+  --warning-soft-border: #5c4a1f;
+  --danger-soft-bg: #3d1914;
+  --danger-soft-border: #672a22;
+  --danger-soft-bg-strong: #4d1f1a;
   /* Knob must stay lighter than the toggle track in both themes; bg-panel
      would render it darker than the track here. */
-  --toggle-knob-bg: #dfe8f4;
+  --toggle-knob-bg: #d2d0dc;
   /* Pure black shadows are invisible on a near-black app background, so dark
      surfaces get their depth from a faint top edge light instead. */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4), inset 0 1px 0 rgb(255 255 255 / 0.04);
   --shadow-lg: 0 16px 32px -12px rgb(0 0 0 / 0.55), 0 4px 10px -4px rgb(0 0 0 / 0.4),
     inset 0 1px 0 rgb(255 255 255 / 0.05);
-  --glow-accent: 0 0 0 1px rgb(112 167 234 / 0.25), 0 4px 24px -6px rgb(112 167 234 / 0.35);
+  --glow-accent: 0 0 0 1px rgb(97 255 202 / 0.25), 0 4px 24px -6px rgb(97 255 202 / 0.35);
   color-scheme: dark;
 }
 
