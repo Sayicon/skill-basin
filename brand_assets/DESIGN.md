@@ -9,17 +9,24 @@
 Estetik yön (Kerem, 2026-07-09): **Cursor + Vercel(Geist) + Claude.ai sentezi** —
 "sade, kullanıcı dostu, şık, geliştiriciler için renkler iyi düşünülmüş".
 
+Renk teması (Kerem, 2026-07-10): **"PowerShell ISE"** (ui.jln.dev vscode-theme portu;
+alternatif aday: Aura Dark). Light = ISE editörü: sarımsı-beyaz kağıt (hue 60) + ISE
+seçim mavisi (hue 213) + sarı vurgu. Dark = kaynak temada dark paleti olmadığı için
+TÜRETİLDİ: PowerShell konsolunun koyu laciverti (hue 216), aynı mavi/sarı/kırmızı
+hue'lar kontrast için parlaklaştırılmış hâlde.
+
 - **Vercel'den**: disiplinli nötr taban, tek anlamlı aksan skalası, mono başlık/etiket
-  + sans gövde eşlemesi, 6-14px köşe skalası, near-black dark + belirgin ~#333 border.
-- **Claude.ai'den**: light temanın sıcak kağıt tonu (#f6f5f1 — soğuk SaaS beyazı değil).
+  + sans gövde eşlemesi, 6-14px köşe skalası, koyu zemin + belirgin border disiplini.
+- **ISE/PowerShell'den**: renk kimliği — light'ta editör kağıdı, dark'ta konsol laciverti.
 - **Cursor'dan**: sessiz koyu chrome, katmanlı yüzeyler, kenar ışığıyla derinlik.
 
 ## Sabit kurallar
 
 1. **Koyu tema varsayılandır** (`themePreference` başlangıcı `'dark'`). Her yeni
    bileşen ÖNCE dark'ta tasarlanır, light'a uyarlanır.
-2. **Tek aksan**: basin teal (`--accent-primary`). İkinci bir marka rengi, gradient
-   wordmark, rainbow YASAK. Stok Tailwind mavi/indigo YASAK.
+2. **Tek aksan**: ISE mavisi (`--accent-primary`, hue 213 — light #1c4e8c / dark
+   #70a7ea). İkinci bir marka rengi, gradient wordmark, rainbow YASAK. Stok Tailwind
+   paletinden renk kopyalamak YASAK — her renk index.css token'ından gelir.
 3. **Yüzey hiyerarşisi**: `bg-app → bg-panel → bg-element → bg-element-hover`
    kademeleri atlanmaz; panel üstüne panel koyma. Dark'ta ayrışma border'dan gelir
    (`border-subtle` her zaman üstünde durduğu yüzeyden net açık).
