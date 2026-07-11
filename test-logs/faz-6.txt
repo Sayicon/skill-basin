@@ -1,0 +1,45 @@
+FAZ 6 test kaydı — 2026-07-11
+
+== Rust (scripts/test-rust.ps1, Windows) ==
+test result: ok. 203 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+Yeni: hermes_global_skills_dir_resolves_under_home_dot_hermes — resmi imajın
+~/.hermes → /opt/data bind-mount'u nedeniyle home-relative çözüm yük taşıyor;
+regresyon kilidi.
+
+== Python (mcp-server, python -m unittest discover -s tests) ==
+Ran 16 tests — OK
+
+Kapsam: frontmatter parser (tek satır, folded >-, literal |, plain
+continuation, tırnaklı), DirCatalog (recursive tarama + load + missing),
+BasinCatalog (yalnız pinli versiyonlar; tool-başına ayrı görünüm; pinsiz
+tool boş; disabled pin servis edilmez; BOM'lu pins.json/mcp-serve.json),
+read_serve_config, stdio round-trip (subprocess), streamable-http
+round-trip (POST /mcp, port=0 ephemeral).
+
+== Lint ==
+eslint temiz · ast-grep temiz · cargo clippy -D warnings temiz
+
+== CANLI TEST (gerçek MCP istemcisi: Claude Code CLI, headless) ==
+Kurulum: serve-basin <fixture-basin> --machine kerem-pc --transport http
+--port 8750; basin'de brainstorming@1.0.0 (gerçek SKILL.md içeriği) pinli,
+brainstorming@2.0.0 (placeholder) PİNSİZ.
+
+1) claude mcp add -t http skillbasin-test http://127.0.0.1:8750/mcp
+   → claude mcp list: "✔ Connected"
+2) claude -p (haiku) skills_list + skill_load('brainstorming'):
+   - skills_list: "1 skill available: - brainstorming (v1.0.0): Turns an
+     idea into a design spec ..." (gerçek description)
+   - skill_load: SKILL.md body geldi
+   - PINCHECK YES — pinli olmayan 2.0.0 listede/serviste YOK.
+Temizlik: claude mcp remove + server kapatıldı.
+
+Not: OpenClaw yerelde kurulu değil — canlı istemci doğrulaması Claude Code
+ile yapıldı (aynı MCP streamable-http yüzeyi). OpenClaw'a tanıtım, Kerem
+kurduğunda aynı `claude mcp add` benzeri tek adım.
+
+== Canlı testin bulduğu bug ==
+PowerShell 5.1 `Set-Content -Encoding utf8` BOM yazar; json.loads BOM'u
+reddeder → elle yazılmış mcp-serve.json sessizce "yok" okunuyordu.
+Fix: tüm okumalar utf-8-sig (BOM'lu ve düz UTF-8'i aynı kabul eder).
+Regresyon testi: test_bom_prefixed_json_files_still_parse.
