@@ -43,3 +43,6 @@ src-tauri/mutants.out.old/
 # python
 __pycache__/
 *.pyc
+
+# rust build output (any crate)
+hub-agent/target/
