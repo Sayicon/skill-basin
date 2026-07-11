@@ -94,7 +94,9 @@ fn show_from_remote(bare: &Path, path: &str) -> Option<String> {
         .args(["show", &format!("main:{path}")])
         .output()
         .unwrap();
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).to_string())
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).to_string())
 }
 
 #[test]
@@ -125,8 +127,7 @@ fn apply_installs_pins_and_pushes_status() {
     assert!(report.actions[0].ok);
 
     // The skill actually landed in the tool dir.
-    let body =
-        std::fs::read_to_string(cfg.tool_dirs["t0"].join("demo").join("SKILL.md")).unwrap();
+    let body = std::fs::read_to_string(cfg.tool_dirs["t0"].join("demo").join("SKILL.md")).unwrap();
     assert_eq!(body, "demo v1 fleet body");
 
     // status.json exists locally AND on the remote (Fleet reads via git).
@@ -162,7 +163,18 @@ fn apply_picks_up_remote_pin_changes() {
     )
     .unwrap();
     git(&editor, &["add", "-A"]);
-    git(&editor, &["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "unpin"]);
+    git(
+        &editor,
+        &[
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "unpin",
+        ],
+    );
     git(&editor, &["push"]);
 
     // Next apply pulls that change and removes the managed install.
@@ -196,8 +208,7 @@ fn failed_action_is_reported_not_swallowed() {
 
     // And the failure is on the remote for the Fleet screen to see.
     let remote: StatusReport =
-        serde_json::from_str(&show_from_remote(&bare, "machines/m1/status.json").unwrap())
-            .unwrap();
+        serde_json::from_str(&show_from_remote(&bare, "machines/m1/status.json").unwrap()).unwrap();
     assert!(!remote.ok);
 }
 

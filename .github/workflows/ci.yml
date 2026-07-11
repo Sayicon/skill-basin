@@ -73,3 +73,8 @@ jobs:
         shell: pwsh
         working-directory: .
         run: ./scripts/test-rust.ps1
+      # Fleet agent links the headless core (no tauri/webkit), so its tests
+      # need no manifest workaround on Windows and no GUI deps anywhere.
+      - name: Test hub-agent
+        working-directory: hub-agent
+        run: cargo test
