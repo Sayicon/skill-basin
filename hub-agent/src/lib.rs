@@ -31,35 +31,9 @@ pub struct AgentConfig {
     pub tool_dirs: BTreeMap<String, PathBuf>,
 }
 
-pub const STATUS_SCHEMA_VERSION: u32 = 1;
-
-/// One applied (or refused) plan action, as reported in status.json.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct StatusAction {
-    pub skill: String,
-    pub tool: String,
-    /// "install" | "update" | "remove" | "conflict"
-    pub action: String,
-    pub ok: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-/// machines/<id>/status.json — written after every apply and pushed to the
-/// basin remote, so the Fleet screen reads machine health straight from the
-/// repo with no extra channel.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct StatusReport {
-    pub schema_version: u32,
-    pub machine: String,
-    /// Unix seconds; the UI formats it (the core stays chrono-free).
-    pub applied_at_epoch: u64,
-    /// False when ANY action failed — partial success must be visible.
-    pub ok: bool,
-    pub actions: Vec<StatusAction>,
-}
+// The status schema lives in the shared core so the desktop app's Fleet
+// screen and this agent can never drift apart on it.
+pub use app_lib::core::fleet::{StatusAction, StatusReport, STATUS_SCHEMA_VERSION};
 
 /// Clone the basin (or reuse an existing clone) and validate the config.
 /// Idempotent: running it again on a healthy setup is a no-op pull.
