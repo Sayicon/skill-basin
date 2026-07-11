@@ -14,6 +14,11 @@ rust-version = "1.77.2"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[[bin]]
+name = "app"
+path = "src/main.rs"
+required-features = ["desktop"]
+
 [build-dependencies]
 tauri-build = { version = "2.5.3", features = [] }
 
@@ -21,11 +26,11 @@ tauri-build = { version = "2.5.3", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.9.5", features = ["test"] }
-tauri-plugin-dialog = "2"
-tauri-plugin-log = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-updater = "2"
+tauri = { version = "2.9.5", features = ["test"], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-log = { version = "2", optional = true }
+tauri-plugin-opener = { version = "2", optional = true }
+tauri-plugin-updater = { version = "2", optional = true }
 anyhow = "1.0"
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "5.0"
@@ -46,7 +51,18 @@ mockito = "1"
 proptest = "1"
 
 [features]
+# The desktop app (Tauri shell, GUI commands, SQLite-backed store paths).
+# Off => headless core only: pins/basin/sync/git — what hub-agent links
+# against so a server build never needs webkit or a display.
+default = ["desktop"]
+desktop = [
+    "dep:tauri",
+    "dep:tauri-plugin-dialog",
+    "dep:tauri-plugin-log",
+    "dep:tauri-plugin-opener",
+    "dep:tauri-plugin-updater",
+]
 # Off by default — only enables the tauri-mcp-server dev tool's Rust-side
 # bridge. Regular builds/CI never pull this crate or its transitive deps.
 # Enable with: cargo tauri dev --features mcp-bridge
-mcp-bridge = ["dep:tauri-plugin-mcp-bridge"]
+mcp-bridge = ["desktop", "dep:tauri-plugin-mcp-bridge"]

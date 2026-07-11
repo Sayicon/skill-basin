@@ -4,5 +4,9 @@ fn main() {
     println!("cargo:rerun-if-changed=icons/icon.icns");
     println!("cargo:rerun-if-changed=icons/icon.ico");
     println!("cargo:rerun-if-changed=tauri.conf.json");
-    tauri_build::build()
+    // Headless builds (hub-agent linking with default-features=false) skip the
+    // Tauri build step entirely; there is no window, icon, or conf to wire.
+    if std::env::var("CARGO_FEATURE_DESKTOP").is_ok() {
+        tauri_build::build()
+    }
 }

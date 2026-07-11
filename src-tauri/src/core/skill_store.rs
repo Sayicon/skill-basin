@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
+#[cfg(feature = "desktop")]
 use tauri::Manager;
 
 const DB_FILE_NAME: &str = "skills_hub.db";
@@ -749,6 +750,7 @@ fn now_ms() -> i64 {
     now.as_millis() as i64
 }
 
+#[cfg(feature = "desktop")]
 pub fn default_db_path<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf> {
     let app_dir = app
         .path()

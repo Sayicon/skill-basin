@@ -1,15 +1,22 @@
+#[cfg(feature = "desktop")]
 mod commands;
 // Public so the core (basin, sync engine, installer) can be reused by
 // non-Tauri consumers of this crate as a plain Rust library.
 pub mod core;
 
+#[cfg(feature = "desktop")]
 use std::sync::Arc;
 
+#[cfg(feature = "desktop")]
 use core::cancel_token::CancelToken;
+#[cfg(feature = "desktop")]
 use core::skill_store::{default_db_path, migrate_legacy_db_if_needed, SkillStore};
+#[cfg(feature = "desktop")]
 use tauri::Manager;
+#[cfg(feature = "desktop")]
 use tauri_plugin_log::{Target, TargetKind};
 
+#[cfg(feature = "desktop")]
 fn init_store<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> anyhow::Result<SkillStore> {
     let db_path = default_db_path(app)?;
     migrate_legacy_db_if_needed(&db_path)?;
@@ -18,6 +25,7 @@ fn init_store<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> anyhow::Result<Sk
     Ok(store)
 }
 
+#[cfg(feature = "desktop")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     #[cfg_attr(not(all(debug_assertions, feature = "mcp-bridge")), allow(unused_mut))]
