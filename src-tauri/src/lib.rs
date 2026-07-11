@@ -154,6 +154,7 @@ pub fn run() {
             commands::export_skill_version,
             commands::default_export_file_name,
             commands::get_machine_pins,
+            commands::fleet_machines,
             commands::set_skill_pin,
             commands::unset_skill_pin,
             commands::get_git_cache_cleanup_days,

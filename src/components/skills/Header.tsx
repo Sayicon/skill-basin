@@ -1,14 +1,14 @@
 import { memo } from 'react'
-import { Layers, Search, Settings, SlidersHorizontal } from 'lucide-react'
+import { Layers, Search, Server, Settings, SlidersHorizontal } from 'lucide-react'
 import type { TFunction } from 'i18next'
 
 type HeaderProps = {
   language: string
   loading: boolean
-  activeView: 'myskills' | 'explore' | 'detail' | 'settings' | 'manage'
+  activeView: 'myskills' | 'explore' | 'detail' | 'settings' | 'manage' | 'fleet'
   onToggleLanguage: () => void
   onOpenSettings: () => void
-  onViewChange: (view: 'myskills' | 'explore' | 'manage') => void
+  onViewChange: (view: 'myskills' | 'explore' | 'manage' | 'fleet') => void
   t: TFunction
 }
 
@@ -46,6 +46,14 @@ const Header = ({
           >
             <Search size={16} />
             {t('navExplore')}
+          </button>
+          <button
+            className={`nav-tab${activeView === 'fleet' ? ' active' : ''}`}
+            type="button"
+            onClick={() => onViewChange('fleet')}
+          >
+            <Server size={16} />
+            {t('navFleet')}
           </button>
           <button
             className={`nav-tab${activeView === 'manage' ? ' active' : ''}`}

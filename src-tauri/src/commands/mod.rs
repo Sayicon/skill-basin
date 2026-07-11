@@ -599,6 +599,69 @@ fn resolved_tool_dirs(
     Ok(dirs)
 }
 
+/// One fleet roster row: a machine known to the basin, its per-tool pin
+/// counts, and the last status report its hub-agent pushed (if any).
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FleetMachineDto {
+    pub machine: String,
+    pub is_current: bool,
+    pub pinned_by_tool: std::collections::BTreeMap<String, u32>,
+    pub status: Option<crate::core::fleet::StatusReport>,
+    /// A status.json that EXISTS but cannot be parsed — shown, not hidden:
+    /// a broken machine must not read as merely "quiet".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_error: Option<String>,
+}
+
+fn fleet_machines_impl(store: &SkillStore) -> anyhow::Result<Vec<FleetMachineDto>> {
+    let basin_dir = require_basin_dir(store)?;
+    let current = current_machine_id(store)?;
+
+    let mut names = crate::core::fleet::list_machines(&basin_dir)?;
+    if !names.iter().any(|n| n == &current) {
+        names.push(current.clone()); // this machine belongs on its own fleet
+        names.sort();
+    }
+
+    let mut out = Vec::with_capacity(names.len());
+    for name in names {
+        let pins = read_machine_pins_or_empty(&basin_dir, &name)?;
+        let mut pinned_by_tool: std::collections::BTreeMap<String, u32> =
+            std::collections::BTreeMap::new();
+        for entry in &pins.pins {
+            for tool in entry.targets.keys() {
+                *pinned_by_tool.entry(tool.clone()).or_default() += 1;
+            }
+        }
+        let (status, status_error) = match crate::core::fleet::read_status(&basin_dir, &name)
+        {
+            Ok(report) => (report, None),
+            Err(err) => (None, Some(format!("{err:#}"))),
+        };
+        out.push(FleetMachineDto {
+            is_current: name == current,
+            machine: name,
+            pinned_by_tool,
+            status,
+            status_error,
+        });
+    }
+    Ok(out)
+}
+
+/// Fleet roster for the Fleet screen — machine list, pin counts, health.
+#[tauri::command]
+pub async fn fleet_machines(
+    store: State<'_, SkillStore>,
+) -> Result<Vec<FleetMachineDto>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || fleet_machines_impl(&store))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
 /// This machine's current pins (which version of which skill goes to which
 /// tool) — the desired-state lockfile the sync planner diffs against disk.
 #[tauri::command]

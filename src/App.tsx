@@ -16,6 +16,7 @@ import remarkGfm from 'remark-gfm'
 import ExplorePage from './components/skills/ExplorePage'
 import FilterBar from './components/skills/FilterBar'
 import SkillDetailView from './components/skills/SkillDetailView'
+import FleetPage from './components/skills/FleetPage'
 import Header from './components/skills/Header'
 import LoadingOverlay from './components/skills/LoadingOverlay'
 import SkillsList from './components/skills/SkillsList'
@@ -77,7 +78,7 @@ type SkillScopeState = Record<
   }
 >
 
-type ActiveView = 'myskills' | 'explore' | 'detail' | 'settings' | 'manage'
+type ActiveView = 'myskills' | 'explore' | 'detail' | 'settings' | 'manage' | 'fleet'
 type ManagementTab = 'tags' | 'tools' | 'updates'
 
 function App() {
@@ -1276,7 +1277,7 @@ function App() {
   }, [featuredSkills.length, invokeTauri])
 
   const handleViewChange = useCallback(
-    (view: 'myskills' | 'explore' | 'manage') => {
+    (view: 'myskills' | 'explore' | 'manage' | 'fleet') => {
       setActiveView(view)
       if (view !== 'myskills') {
         setBulkMode(false)
@@ -3534,6 +3535,8 @@ function App() {
               </div>
             ) : null}
           </div>
+        ) : activeView === 'fleet' ? (
+          <FleetPage invokeTauri={invokeTauri} language={language} t={t} />
         ) : activeView === 'manage' ? (
           <div className="management-page">
             <div className="management-header">
