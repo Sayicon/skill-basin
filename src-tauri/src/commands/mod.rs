@@ -599,6 +599,45 @@ fn resolved_tool_dirs(
     Ok(dirs)
 }
 
+/// Basin connection state for Settings + the first-launch wizard. A broken
+/// path (deleted dir, moved repo) must be VISIBLE with a reason — never a
+/// silent WARN again.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BasinStatusDto {
+    /// "notConfigured" | "broken" | "ok"
+    pub state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_url: Option<String>,
+}
+
+fn basin_status_impl(store: &SkillStore) -> anyhow::Result<BasinStatusDto> {
+    let _ = store;
+    todo!("notConfigured / broken(reason) / ok(remote)")
+}
+
+fn basin_connect_impl(
+    store: &SkillStore,
+    repo_url: &str,
+    dest: &str,
+) -> anyhow::Result<BasinStatusDto> {
+    let _ = (store, repo_url, dest);
+    todo!("clone, validate manifest, repoint setting")
+}
+
+fn basin_create_impl(
+    store: &SkillStore,
+    dest: &str,
+    remote_url: Option<&str>,
+) -> anyhow::Result<BasinStatusDto> {
+    let _ = (store, dest, remote_url);
+    todo!("init, optional remote + push, repoint setting")
+}
+
 /// One fleet roster row: a machine known to the basin, its per-tool pin
 /// counts, and the last status report its hub-agent pushed (if any).
 #[derive(Debug, Serialize)]

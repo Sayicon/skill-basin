@@ -730,6 +730,149 @@ fn get_managed_skills_impl_maps_targets() {
 }
 
 #[test]
+fn basin_status_reports_not_configured_broken_and_ok() {
+    let (dir, store) = make_store();
+
+    // No setting at all -> notConfigured (first launch).
+    let s = basin_status_impl(&store).unwrap();
+    assert_eq!(s.state, "notConfigured");
+
+    // Setting points at a dir that no longer exists -> broken, with the path
+    // and a reason the UI can show (the silent-WARN failure mode, surfaced).
+    store
+        .set_setting("basin_path", "C:/yok/boyle/bir/dizin")
+        .unwrap();
+    let s = basin_status_impl(&store).unwrap();
+    assert_eq!(s.state, "broken");
+    assert!(s.path.as_deref().unwrap_or("").contains("yok"));
+    assert!(s.reason.is_some());
+
+    // A real basin -> ok, and the remote URL (if any) rides along.
+    let basin_dir = make_basin(dir.path(), &store);
+    let s = basin_status_impl(&store).unwrap();
+    assert_eq!(s.state, "ok", "{s:?}");
+    assert_eq!(s.path.as_deref(), Some(&*basin_dir.to_string_lossy()));
+    assert!(s.remote_url.is_none(), "no origin configured yet");
+}
+
+fn bare_basin_remote(root: &std::path::Path) -> std::path::PathBuf {
+    let bare = root.join("uzak.git");
+    let out = std::process::Command::new("git")
+        .args(["init", "--bare", "-b", "main"])
+        .arg(&bare)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let seed = root.join("seed-basin");
+    crate::core::basin::basin_init(&seed, "uzak", "2026-07-11").unwrap();
+    crate::core::basin::basin_commit_all(&seed, "seed").unwrap();
+    let run = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .current_dir(&seed)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    };
+    run(&["remote", "add", "origin", bare.to_str().unwrap()]);
+    run(&["push", "-u", "origin", "main"]);
+    bare
+}
+
+#[test]
+fn basin_connect_clones_and_repoints_the_setting() {
+    let (dir, store) = make_store();
+    let bare = bare_basin_remote(dir.path());
+    let dest = dir.path().join("bagli-basin");
+
+    let s = basin_connect_impl(
+        &store,
+        &bare.to_string_lossy(),
+        &dest.to_string_lossy(),
+    )
+    .unwrap();
+    assert_eq!(s.state, "ok");
+    assert!(dest.join("basin.json").exists());
+    assert_eq!(
+        store.get_setting("basin_path").unwrap().as_deref(),
+        Some(&*dest.to_string_lossy())
+    );
+    assert_eq!(s.remote_url.as_deref(), Some(&*bare.to_string_lossy()));
+}
+
+#[test]
+fn basin_connect_refuses_a_repo_that_is_not_a_basin() {
+    let (dir, store) = make_store();
+    // A git repo WITHOUT basin.json: cloning it must fail and must NOT
+    // repoint the setting at a half-usable directory.
+    let bare = dir.path().join("duz.git");
+    let out = std::process::Command::new("git")
+        .args(["init", "--bare", "-b", "main"])
+        .arg(&bare)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let work = dir.path().join("duz-work");
+    for args in [
+        vec!["clone", bare.to_str().unwrap(), work.to_str().unwrap()],
+    ] {
+        let out = std::process::Command::new("git").args(&args).output().unwrap();
+        assert!(out.status.success());
+    }
+    std::fs::write(work.join("bos.txt"), "basin degil").unwrap();
+    for args in [
+        vec!["add", "-A"],
+        vec!["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "x"],
+        vec!["push"],
+    ] {
+        let out = std::process::Command::new("git")
+            .current_dir(&work)
+            .args(&args)
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+    }
+
+    let dest = dir.path().join("olmamali");
+    let err = basin_connect_impl(&store, &bare.to_string_lossy(), &dest.to_string_lossy());
+    assert!(err.is_err());
+    assert!(store.get_setting("basin_path").unwrap().is_none());
+}
+
+#[test]
+fn basin_create_initializes_and_optionally_wires_a_remote() {
+    let (dir, store) = make_store();
+    let bare = dir.path().join("yeni-uzak.git");
+    let out = std::process::Command::new("git")
+        .args(["init", "--bare", "-b", "main"])
+        .arg(&bare)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let dest = dir.path().join("yeni-basin");
+    let s = basin_create_impl(
+        &store,
+        &dest.to_string_lossy(),
+        Some(&bare.to_string_lossy()),
+    )
+    .unwrap();
+    assert_eq!(s.state, "ok");
+    assert!(dest.join("basin.json").exists());
+    assert_eq!(
+        store.get_setting("basin_path").unwrap().as_deref(),
+        Some(&*dest.to_string_lossy())
+    );
+    // The initial commit must have landed on the remote too.
+    let out = std::process::Command::new("git")
+        .current_dir(&bare)
+        .args(["show", "main:basin.json"])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "initial basin must be pushed");
+}
+
+#[test]
 fn fleet_machines_lists_roster_with_status_and_pin_counts() {
     let (dir, store) = make_store();
     let basin_dir = make_basin(dir.path(), &store);
