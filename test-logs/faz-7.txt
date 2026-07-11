@@ -1,0 +1,53 @@
+FAZ 7 test kaydı — 2026-07-11
+
+== Rust (scripts/test-rust.ps1, Windows, desktop features) ==
+test result: ok. 207 passed; 0 failed  (206 + fleet_machines roster testi)
+
+== Rust (headless: cargo test --lib --no-default-features) ==
+test result: ok. 120 passed; 0 failed
+Not: headless testler comctl32 manifest workaround'u OLMADAN koştu —
+dialog bağımlılığı tauri'yle birlikte kapı dışında kalıyor.
+
+== hub-agent (cargo test, 5 spec) ==
+test result: ok. 5 passed; 0 failed
+- init clone + idempotens
+- apply: install + status.json'ın REMOTE'a push kanıtı (bare repo'dan
+  git show ile okunarak)
+- uzak pin değişikliği sonraki apply'da uygulanıyor (remove)
+- kısmi hata: bozuk pin ok=false + hata satırı, sağlıklı pin bloklanmaz
+- agent.json BOM'lu okunur
+
+== Frontend ==
+tsc temiz · eslint temiz · ast-grep temiz · vitest 44/44
+Fleet ekranı vite+CDP'de canlı render doğrulandı (hata banner'ı dahil).
+
+== CANLI FLEET TESTİ (gerçek iki makine: kerem-pc + hermes-vps) ==
+Kurulum: hub-agent WSL2'de derlendi (glibc 2.39 = VPS 2.39; 9.0MB, 2m09s),
+scp ile VPS'e; VPS'te ~/.ssh/skillbasin_deploy deploy key'i (Kerem onayı)
++ GitHub SkillBasin-remote'a write-access deploy key olarak eklendi.
+VPS'e derleme yükü binmedi (Kerem'in alan kısıtı — 15G boş).
+
+Akış ve kanıtlar:
+1. kerem-pc: havuza skillbasin-fleet-test@1.0.0 + hermes-vps pini
+   (strategy=copy) → push (7d769ca)
+2. VPS: skillbasin-agent apply → "[ok ] install skillbasin-fleet-test ->
+   hermes_agent", EXIT=0
+3. Skill GERÇEK Hermes dizininde: /root/.hermes/skills/skillbasin-fleet-test/
+   SKILL.md + .skillbasin.json sidecar (contentHash sha256:d4517...)
+4. Mevcut ~17 manifest'siz Hermes skill'ine DOKUNULMADI — proptest'in
+   hands-off invariant'ı canlı veride tuttu.
+5. Status round-trip: VPS'in "status: hermes-vps apply" commit'i (856c070)
+   GitHub üzerinden kerem-pc havuzuna pull'landı; status.json ok:true,
+   actions=[("install","skillbasin-fleet-test",true)].
+6. İlk apply (pin'siz) de doğru davrandı: ok:true, actions boş.
+
+== Canlı testte doğrulanan tasarım kararı ==
+Hermes pini strategy=copy: symlink /root/.skillbasin/basin'i gösterirdi,
+o path container'a mount edilmiyor → link container içinde kırık olurdu.
+Bind-mount'lu hedefe COPY şart (docs/lessons.md L12).
+
+== Bilinen borçlar (kapanışta AGENTS.md'ye işlendi) ==
+- git_fetcher hata mesajı hardcoded Çince (lokalizasyon borcu listesine)
+- Uzak makinenin pinini düzenleyen UI yok — pins.json elle yazıldı (FAZ 8 adayı)
+- Fleet ekranının gerçek-veri screenshot'ı alınamadı (arka plan görevleri
+  kesildi); Kerem tauri:dev → Fleet ile görebilir
