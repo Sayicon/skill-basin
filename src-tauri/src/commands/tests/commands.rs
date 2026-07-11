@@ -729,6 +729,73 @@ fn get_managed_skills_impl_maps_targets() {
     assert!(out[0].targets[0].project_path.is_none());
 }
 
+#[test]
+fn fleet_machines_lists_roster_with_status_and_pin_counts() {
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+
+    // Remote machine m1: two pins on two tools + a failing status report.
+    let m1 = basin_dir.join("machines/m1");
+    std::fs::create_dir_all(&m1).unwrap();
+    std::fs::write(
+        m1.join("pins.json"),
+        r#"{"machine":"m1","pins":[
+            {"skill":"a","version":"1.0.0","targets":{"t0":{},"t1":{}}},
+            {"skill":"b","version":"1.0.0","targets":{"t0":{}}}]}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        m1.join("status.json"),
+        serde_json::to_string(&crate::core::fleet::StatusReport {
+            schema_version: 1,
+            machine: "m1".to_string(),
+            applied_at_epoch: 1_760_000_000,
+            ok: false,
+            actions: vec![crate::core::fleet::StatusAction {
+                skill: "a".to_string(),
+                tool: "t0".to_string(),
+                action: "install".to_string(),
+                ok: false,
+                error: Some("permission denied".to_string()),
+            }],
+        })
+        .unwrap(),
+    )
+    .unwrap();
+
+    // Machine with a CORRUPT status: must surface as an error string, not
+    // vanish and not sink the whole roster.
+    let m2 = basin_dir.join("machines/m2");
+    std::fs::create_dir_all(&m2).unwrap();
+    std::fs::write(m2.join("status.json"), "{bozuk json").unwrap();
+
+    let out = fleet_machines_impl(&store).unwrap();
+    let current_id = current_machine_id(&store).unwrap();
+
+    // Roster: m1, m2, and this machine (even with no machines/ entry yet).
+    let names: Vec<_> = out.iter().map(|m| m.machine.as_str()).collect();
+    assert!(names.contains(&"m1"), "{names:?}");
+    assert!(names.contains(&"m2"), "{names:?}");
+    assert!(names.contains(&current_id.as_str()), "{names:?}");
+
+    let m1 = out.iter().find(|m| m.machine == "m1").unwrap();
+    assert!(!m1.is_current);
+    assert_eq!(m1.pinned_by_tool.get("t0"), Some(&2));
+    assert_eq!(m1.pinned_by_tool.get("t1"), Some(&1));
+    let status = m1.status.as_ref().unwrap();
+    assert!(!status.ok);
+    assert_eq!(status.actions[0].error.as_deref(), Some("permission denied"));
+
+    let m2 = out.iter().find(|m| m.machine == "m2").unwrap();
+    assert!(m2.status.is_none());
+    assert!(m2.status_error.as_deref().unwrap_or("").contains("parse"));
+
+    let me = out.iter().find(|m| m.machine == current_id).unwrap();
+    assert!(me.is_current);
+    assert!(me.status.is_none());
+    assert!(me.status_error.is_none());
+}
+
 fn custom_tool(key: &str, skills_dir: &std::path::Path, enabled: bool) -> CustomToolConfig {
     CustomToolConfig {
         key: key.to_string(),
