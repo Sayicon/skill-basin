@@ -118,8 +118,17 @@ def parse_frontmatter(text: str) -> dict:
 
 def read_skill_md(path: Path) -> str | None:
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
+        # utf-8-sig: tolerate the BOM that Windows editors and PowerShell 5.1's
+        # `Set-Content -Encoding utf8` prepend; reads plain UTF-8 unchanged.
+        return path.read_text(encoding="utf-8-sig", errors="replace")
     except OSError:
+        return None
+
+
+def read_json(path: Path):
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
         return None
 
 
@@ -169,10 +178,8 @@ class BasinCatalog:
         self.tool = tool
 
     def _pinned(self) -> list[dict]:
-        pins_path = self.basin / "machines" / self.machine / "pins.json"
-        try:
-            pins = json.loads(pins_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        pins = read_json(self.basin / "machines" / self.machine / "pins.json")
+        if pins is None:
             return []
         out = []
         for entry in pins.get("pins", []):
@@ -210,11 +217,8 @@ class BasinCatalog:
 def read_serve_config(basin: Path, machine: str) -> str | None:
     """machines/<id>/mcp-serve.json -> which tool this machine's server
     speaks for. CLI --tool overrides it."""
-    path = Path(basin) / "machines" / machine / "mcp-serve.json"
-    try:
-        return json.loads(path.read_text(encoding="utf-8")).get("tool")
-    except (OSError, json.JSONDecodeError):
-        return None
+    config = read_json(Path(basin) / "machines" / machine / "mcp-serve.json")
+    return config.get("tool") if isinstance(config, dict) else None
 
 
 # ── JSON-RPC core ──────────────────────────────────────────────────────────

@@ -168,6 +168,17 @@ class BasinModeTests(unittest.TestCase):
         tool = srv.read_serve_config(self.basin, "m1")
         self.assertEqual(tool, "hermes_agent")
 
+    def test_bom_prefixed_json_files_still_parse(self):
+        # PowerShell 5.1's `Set-Content -Encoding utf8` writes a UTF-8 BOM;
+        # a Windows user hand-writing pins.json/mcp-serve.json hits this.
+        m = self.basin / "machines" / "m1"
+        for fname in ("pins.json", "mcp-serve.json"):
+            p = m / fname
+            p.write_bytes(b"\xef\xbb\xbf" + p.read_bytes())
+        self.assertEqual(srv.read_serve_config(self.basin, "m1"), "hermes_agent")
+        cat = srv.BasinCatalog(self.basin, "m1", "hermes_agent")
+        self.assertEqual([s["name"] for s in cat.list()], ["demo"])
+
     def test_disabled_pin_target_not_served(self):
         pins_path = self.basin / "machines" / "m1" / "pins.json"
         pins = json.loads(pins_path.read_text(encoding="utf-8"))
