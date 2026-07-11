@@ -615,9 +615,42 @@ pub struct BasinStatusDto {
     pub remote_url: Option<String>,
 }
 
+fn basin_remote_url(basin_dir: &std::path::Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .current_dir(basin_dir)
+        .args(["remote", "get-url", "origin"])
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+        .filter(|url| !url.is_empty())
+}
+
 fn basin_status_impl(store: &SkillStore) -> anyhow::Result<BasinStatusDto> {
-    let _ = store;
-    todo!("notConfigured / broken(reason) / ok(remote)")
+    let Some(path) = configured_basin_dir(store)? else {
+        return Ok(BasinStatusDto {
+            state: "notConfigured".to_string(),
+            path: None,
+            reason: None,
+            remote_url: None,
+        });
+    };
+    let path_str = path.to_string_lossy().to_string();
+    match crate::core::basin::read_manifest(&path) {
+        Ok(_) => Ok(BasinStatusDto {
+            state: "ok".to_string(),
+            remote_url: basin_remote_url(&path),
+            path: Some(path_str),
+            reason: None,
+        }),
+        Err(err) => Ok(BasinStatusDto {
+            state: "broken".to_string(),
+            path: Some(path_str),
+            reason: Some(format!("{err:#}")),
+            remote_url: None,
+        }),
+    }
 }
 
 fn basin_connect_impl(
@@ -625,8 +658,15 @@ fn basin_connect_impl(
     repo_url: &str,
     dest: &str,
 ) -> anyhow::Result<BasinStatusDto> {
-    let _ = (store, repo_url, dest);
-    todo!("clone, validate manifest, repoint setting")
+    let dest_path = expand_home_path(dest)?;
+    crate::core::basin::basin_clone_or_pull(repo_url, &dest_path)?;
+    // Only a repo carrying a basin manifest may become THE basin; repointing
+    // the setting at anything else would trade one broken state for another.
+    if let Err(err) = crate::core::basin::read_manifest(&dest_path) {
+        anyhow::bail!("cloned repository is not a basin (no readable basin.json): {err:#}");
+    }
+    store.set_setting(BASIN_PATH_SETTING, &dest_path.to_string_lossy())?;
+    basin_status_impl(store)
 }
 
 fn basin_create_impl(
@@ -634,8 +674,147 @@ fn basin_create_impl(
     dest: &str,
     remote_url: Option<&str>,
 ) -> anyhow::Result<BasinStatusDto> {
-    let _ = (store, dest, remote_url);
-    todo!("init, optional remote + push, repoint setting")
+    let dest_path = expand_home_path(dest)?;
+    let today = crate::core::basin::unix_days_to_date(
+        (std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+            / 86_400) as i64,
+    );
+    crate::core::basin::basin_init(&dest_path, "basin", &today)?;
+    crate::core::basin::basin_commit_all(&dest_path, "init basin")?;
+    if let Some(url) = remote_url.filter(|u| !u.trim().is_empty()) {
+        let out = std::process::Command::new("git")
+            .current_dir(&dest_path)
+            .args(["remote", "add", "origin", url])
+            .output()?;
+        // "already exists" is fine on a re-run; anything else is not.
+        if !out.status.success()
+            && !String::from_utf8_lossy(&out.stderr).contains("already exists")
+        {
+            anyhow::bail!(
+                "git remote add failed: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            );
+        }
+        crate::core::basin::basin_push(&dest_path)?;
+    }
+    store.set_setting(BASIN_PATH_SETTING, &dest_path.to_string_lossy())?;
+    basin_status_impl(store)
+}
+
+/// Basin connection state for Settings and the first-launch wizard.
+#[tauri::command]
+pub async fn basin_status(store: State<'_, SkillStore>) -> Result<BasinStatusDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || basin_status_impl(&store))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
+/// Clone an existing basin repo and make it THE basin.
+#[tauri::command]
+pub async fn basin_connect(
+    store: State<'_, SkillStore>,
+    repo_url: String,
+    dest: String,
+) -> Result<BasinStatusDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || basin_connect_impl(&store, &repo_url, &dest))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
+/// Initialize a fresh basin (optionally wiring + pushing a remote).
+#[tauri::command]
+pub async fn basin_create(
+    store: State<'_, SkillStore>,
+    dest: String,
+    remote_url: Option<String>,
+) -> Result<BasinStatusDto, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        basin_create_impl(&store, &dest, remote_url.as_deref())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretStatusDto {
+    pub name: String,
+    /// "keychain" | "envFile" | "missing"
+    pub state: String,
+}
+
+fn secrets_env_path() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|h| h.join(".skillbasin").join("secrets.env"))
+}
+
+/// Every `${secret:name}` referenced by the basin's mcp/*.json configs,
+/// with where (or whether) this machine can satisfy it.
+fn secrets_status_impl(store: &SkillStore) -> anyhow::Result<Vec<SecretStatusDto>> {
+    let basin_dir = require_basin_dir(store)?;
+    let mut names: Vec<String> = Vec::new();
+    let mcp_dir = basin_dir.join("mcp");
+    if let Ok(entries) = std::fs::read_dir(&mcp_dir) {
+        for entry in entries.flatten() {
+            if entry.path().extension().is_some_and(|e| e == "json") {
+                if let Ok(text) = std::fs::read_to_string(entry.path()) {
+                    for name in crate::core::secrets::extract_secret_refs(&text) {
+                        if !names.contains(&name) {
+                            names.push(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    names.sort();
+    let resolution = crate::core::secrets::resolve_secrets(
+        &names,
+        &crate::core::secrets::OsKeychain,
+        secrets_env_path().as_deref(),
+    );
+    Ok(names
+        .into_iter()
+        .map(|name| {
+            let state = match resolution.sources.get(&name) {
+                Some(crate::core::secrets::SecretSource::Keychain) => "keychain",
+                Some(crate::core::secrets::SecretSource::EnvFile) => "envFile",
+                None => "missing",
+            };
+            SecretStatusDto { name, state: state.to_string() }
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn secrets_status(
+    store: State<'_, SkillStore>,
+) -> Result<Vec<SecretStatusDto>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || secrets_status_impl(&store))
+        .await
+        .map_err(|err| err.to_string())?
+        .map_err(format_anyhow_error)
+}
+
+/// Store a secret value in the OS keychain (never in the basin).
+#[tauri::command]
+pub async fn set_secret(name: String, value: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        keyring::Entry::new(crate::core::secrets::KEYCHAIN_SERVICE, &name)
+            .and_then(|entry| entry.set_password(&value))
+            .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 /// One fleet roster row: a machine known to the basin, its per-tool pin

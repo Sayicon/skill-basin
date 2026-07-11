@@ -813,12 +813,11 @@ fn basin_connect_refuses_a_repo_that_is_not_a_basin() {
         .unwrap();
     assert!(out.status.success());
     let work = dir.path().join("duz-work");
-    for args in [
-        vec!["clone", bare.to_str().unwrap(), work.to_str().unwrap()],
-    ] {
-        let out = std::process::Command::new("git").args(&args).output().unwrap();
-        assert!(out.status.success());
-    }
+    let out = std::process::Command::new("git")
+        .args(["clone", bare.to_str().unwrap(), work.to_str().unwrap()])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
     std::fs::write(work.join("bos.txt"), "basin degil").unwrap();
     for args in [
         vec!["add", "-A"],
