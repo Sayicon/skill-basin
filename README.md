@@ -96,6 +96,15 @@ grants no rights.
 
 ![Explore](docs/assets/explore-search.png)
 
+### Fleet
+
+Every machine attached to the basin, reported by its own agent. A remote box
+runs the 9 MB `skillbasin-agent` binary on a schedule: it pulls the basin,
+applies that machine's pins with the same engine the desktop uses, and pushes
+a status report back into the repo — no inbound port, no push channel.
+
+![Fleet](docs/assets/fleet.png)
+
 ### Management Center
 
 Tags, tool targets, and update scheduling in one place. A tool that exists on
