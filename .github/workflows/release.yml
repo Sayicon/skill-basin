@@ -36,6 +36,10 @@ jobs:
           - os: windows-2022
             target: aarch64-pc-windows-msvc
             arch: arm64
+          # Linux x64 (.deb + AppImage; also builds the fleet agent)
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            arch: linux-x64
 
     steps:
       - name: Checkout
@@ -76,6 +80,12 @@ jobs:
           export PATH="/c/Strawberry/perl/bin:$PATH"
           # WebView2 Runtime is pre-installed on windows-2022 runner
           rustup target add ${{ matrix.target }}
+
+      - name: Install Linux build deps
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libglib2.0-dev libgtk-3-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xvfb
 
       - name: Install frontend deps
         run: npm ci
@@ -219,6 +229,19 @@ jobs:
           echo "=== Build completed ==="
           ls -la src-tauri/target/${{ matrix.target }}/release/bundle/ || true
 
+      - name: Build Tauri App (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run tauri:build -- --target ${{ matrix.target }} --bundles deb,appimage
+          ls -la src-tauri/target/${{ matrix.target }}/release/bundle/ || true
+
+      - name: Build fleet agent (Linux)
+        if: startsWith(matrix.os, 'ubuntu')
+        working-directory: hub-agent
+        run: cargo build --release
+
       - name: Verify codesign (optional)
         shell: bash
         run: |
@@ -282,12 +305,12 @@ jobs:
             exit 1
           fi
 
-          NEW_TAR_GZ="Skills-Hub-${VERSION}-macOS-${ARCH}.tar.gz"
+          NEW_TAR_GZ="SkillBasin-${VERSION}-macOS-${ARCH}.tar.gz"
           cp "${TAR_GZ}" "release-assets/${NEW_TAR_GZ}"
           cp "${TAR_GZ}.sig" "release-assets/${NEW_TAR_GZ}.sig"
 
           if [ -n "${DMG}" ]; then
-            NEW_DMG="Skills-Hub-${VERSION}-macOS-${ARCH}.dmg"
+            NEW_DMG="SkillBasin-${VERSION}-macOS-${ARCH}.dmg"
             cp "${DMG}" "release-assets/${NEW_DMG}"
           else
             echo "⚠️ 未找到 macOS .dmg（可选）" >&2
@@ -334,9 +357,72 @@ jobs:
             exit 1
           fi
 
-          NEW_EXE="Skills-Hub-${VERSION}-Windows-${ARCH}.exe"
+          NEW_EXE="SkillBasin-${VERSION}-Windows-${ARCH}.exe"
           cp "${EXE}" "release-assets/${NEW_EXE}"
           cp "${EXE}.sig" "release-assets/${NEW_EXE}.sig"
+
+      - name: Prepare Linux Assets
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          VERSION="${GITHUB_REF_NAME}"
+          TARGET="${{ matrix.target }}"
+          BUNDLE="src-tauri/target/${TARGET}/release/bundle"
+          DEB="$(find "$BUNDLE" -type f -name '*.deb' | head -n 1)"
+          APPIMAGE="$(find "$BUNDLE" -type f -name '*.AppImage' | head -n 1)"
+          [ -n "$DEB" ] || { echo "no .deb produced" >&2; exit 1; }
+          [ -n "$APPIMAGE" ] || { echo "no .AppImage produced" >&2; exit 1; }
+          cp "$DEB" "release-assets/SkillBasin-${VERSION}-Linux-x64.deb"
+          cp "$APPIMAGE" "release-assets/SkillBasin-${VERSION}-Linux-x64.AppImage"
+          if [ -f "${APPIMAGE}.sig" ]; then
+            cp "${APPIMAGE}.sig" "release-assets/SkillBasin-${VERSION}-Linux-x64.AppImage.sig"
+          fi
+          cp hub-agent/target/release/skillbasin-agent              "release-assets/skillbasin-agent-${VERSION}-Linux-x64"
+
+      # Install -> launch smoke: the app must survive its first seconds on a
+      # clean machine of every OS we ship for.
+      - name: Smoke test (Windows install + launch)
+        if: matrix.os == 'windows-2022' && matrix.arch == 'x64'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem release-assets/*.exe | Select-Object -First 1
+          Start-Process -FilePath $exe.FullName -ArgumentList '/S' -Wait
+          $installed = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter 'skillbasin*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $installed) { $installed = Get-ChildItem 'C:\Program Files' -Recurse -Depth 2 -Filter 'skillbasin*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if (-not $installed) { Write-Error 'installed exe not found'; exit 1 }
+          $p = Start-Process -FilePath $installed.FullName -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { Write-Error "app exited early: $($p.ExitCode)"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Smoke test (macOS launch)
+        if: matrix.os == 'macos-14'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$(find src-tauri/target/${{ matrix.target }}/release/bundle -type d -name '*.app' | head -n 1)"
+          BIN="$(find "$APP/Contents/MacOS" -type f | head -n 1)"
+          "$BIN" & PID=$!
+          sleep 12
+          kill -0 "$PID" || { echo "app exited early" >&2; exit 1; }
+          kill "$PID"
+
+      - name: Smoke test (Linux install + launch)
+        if: startsWith(matrix.os, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo dpkg -i release-assets/*.deb
+          BIN="$(command -v skillbasin || ls /usr/bin/skillbasin* /usr/bin/skill-basin* 2>/dev/null | head -n 1)"
+          [ -n "$BIN" ] || { echo "installed binary not found" >&2; dpkg -L $(dpkg -f release-assets/*.deb Package) >&2; exit 1; }
+          xvfb-run -a "$BIN" & PID=$!
+          sleep 12
+          kill -0 "$PID" || { echo "app exited early" >&2; exit 1; }
+          kill "$PID"
+          # fleet agent must at least print usage on a clean box
+          ./release-assets/skillbasin-agent-* 2>&1 | grep -qi usage
 
       - name: List prepared assets
         shell: bash
@@ -377,7 +463,7 @@ jobs:
             echo
             echo '**Windows Note:** Windows SmartScreen may show a warning during installation. This is normal for unsigned executables. The application is safe to use.'
             echo
-            echo '**macOS Note:** macOS Gatekeeper workaround (only needed on some macOS versions): `xattr -cr "/Applications/Skills Hub.app"` (https://v2.tauri.app/distribute/#macos).'
+            echo '**macOS Note:** macOS Gatekeeper workaround (only needed on some macOS versions): `xattr -cr "/Applications/SkillBasin.app"` (https://v2.tauri.app/distribute/#macos).'
           } >> release-notes.md
 
       - name: Generate updater.json
@@ -392,6 +478,7 @@ jobs:
           PUB_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           base_url="https://github.com/$REPO/releases/download/$TAG"
 
+          linux_url=""; linux_sig=""
           mac_arm_url=""; mac_arm_sig=""
           mac_x64_url=""; mac_x64_sig=""
           win_arm_url=""; win_arm_sig=""
@@ -414,6 +501,8 @@ jobs:
                 win_arm_url="$url"; win_arm_sig="$sig_content";;
               *-Windows-x64.exe)
                 win_x64_url="$url"; win_x64_sig="$sig_content";;
+              *-Linux-x64.AppImage)
+                linux_url="$url"; linux_sig="$sig_content";;
             esac
           done
 
@@ -460,6 +549,11 @@ jobs:
               echo "    \"windows-x86_64\": {\"signature\": \"$win_x64_sig\", \"url\": \"$win_x64_url\"}"
               first=0
             fi
+            if [ -n "${linux_url:-}" ] && [ -n "${linux_sig:-}" ]; then
+              [ $first -eq 0 ] && echo ','
+              echo "    \"linux-x86_64\": {\"signature\": \"$linux_sig\", \"url\": \"$linux_url\"}"
+              first=0
+            fi
             echo '  }'
             echo '}'
           } > "$tmp_json"
@@ -471,7 +565,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: Skills Hub ${{ github.ref_name }}
+          name: SkillBasin ${{ github.ref_name }}
           prerelease: ${{ contains(github.ref_name, '-') }}
           body_path: release-notes.md
           files: |
