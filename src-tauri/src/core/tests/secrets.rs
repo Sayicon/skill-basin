@@ -82,7 +82,10 @@ fn placeholder_extraction_finds_secret_refs() {
     let text = r#"{"env":{"A":"${secret:qdrant_api_key}","B":"düz","C":"${secret:tts_key}"}}"#;
     let mut refs = extract_secret_refs(text);
     refs.sort();
-    assert_eq!(refs, vec!["qdrant_api_key".to_string(), "tts_key".to_string()]);
+    assert_eq!(
+        refs,
+        vec!["qdrant_api_key".to_string(), "tts_key".to_string()]
+    );
 }
 
 #[test]

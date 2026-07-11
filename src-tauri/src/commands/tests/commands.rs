@@ -730,6 +730,62 @@ fn get_managed_skills_impl_maps_targets() {
 }
 
 #[test]
+fn secrets_status_requires_a_basin() {
+    // Error path (docs/lessons.md L2): no basin configured must be a real
+    // error, not an empty list pretending everything is fine.
+    let (_dir, store) = make_store();
+    assert!(secrets_status_impl(&store, None).is_err());
+}
+
+#[test]
+fn secrets_status_scans_refs_and_reports_resolution() {
+    let (dir, store) = make_store();
+    let basin_dir = make_basin(dir.path(), &store);
+
+    // Two configs; duplicate refs collapse, and a file that is not even
+    // valid JSON still yields its refs (the scan is textual on purpose —
+    // a half-written config must not hide its missing secrets).
+    let mcp = basin_dir.join("mcp");
+    std::fs::create_dir_all(&mcp).unwrap();
+    std::fs::write(
+        mcp.join("qdrant.json"),
+        r#"{"env":{"A":"${secret:tst_env_anahtari}","B":"${secret:tst_eksik_anahtar}"}}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        mcp.join("bozuk.json"),
+        r#"{bozuk json ama ${secret:tst_eksik_anahtar} referansı sağlam"#,
+    )
+    .unwrap();
+
+    // Machine-local env file satisfies exactly one of them.
+    let env_file = dir.path().join("secrets.env");
+    std::fs::write(&env_file, "tst_env_anahtari=deger\n").unwrap();
+
+    let out = secrets_status_impl(&store, Some(&env_file)).unwrap();
+    let as_pairs: Vec<(&str, &str)> = out
+        .iter()
+        .map(|s| (s.name.as_str(), s.state.as_str()))
+        .collect();
+    // Sorted, deduplicated; the env-file hit says so, the rest is missing
+    // (these names exist in no real keychain).
+    assert_eq!(
+        as_pairs,
+        vec![
+            ("tst_eksik_anahtar", "missing"),
+            ("tst_env_anahtari", "envFile"),
+        ]
+    );
+}
+
+#[test]
+fn secrets_status_is_empty_without_mcp_configs() {
+    let (dir, store) = make_store();
+    make_basin(dir.path(), &store);
+    assert!(secrets_status_impl(&store, None).unwrap().is_empty());
+}
+
+#[test]
 fn basin_status_reports_not_configured_broken_and_ok() {
     let (dir, store) = make_store();
 
@@ -772,7 +828,11 @@ fn bare_basin_remote(root: &std::path::Path) -> std::path::PathBuf {
             .args(args)
             .output()
             .unwrap();
-        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
     };
     run(&["remote", "add", "origin", bare.to_str().unwrap()]);
     run(&["push", "-u", "origin", "main"]);
@@ -785,12 +845,7 @@ fn basin_connect_clones_and_repoints_the_setting() {
     let bare = bare_basin_remote(dir.path());
     let dest = dir.path().join("bagli-basin");
 
-    let s = basin_connect_impl(
-        &store,
-        &bare.to_string_lossy(),
-        &dest.to_string_lossy(),
-    )
-    .unwrap();
+    let s = basin_connect_impl(&store, &bare.to_string_lossy(), &dest.to_string_lossy()).unwrap();
     assert_eq!(s.state, "ok");
     assert!(dest.join("basin.json").exists());
     assert_eq!(
@@ -821,7 +876,15 @@ fn basin_connect_refuses_a_repo_that_is_not_a_basin() {
     std::fs::write(work.join("bos.txt"), "basin degil").unwrap();
     for args in [
         vec!["add", "-A"],
-        vec!["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "x"],
+        vec![
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "x",
+        ],
         vec!["push"],
     ] {
         let out = std::process::Command::new("git")
@@ -926,7 +989,10 @@ fn fleet_machines_lists_roster_with_status_and_pin_counts() {
     assert_eq!(m1.pinned_by_tool.get("t1"), Some(&1));
     let status = m1.status.as_ref().unwrap();
     assert!(!status.ok);
-    assert_eq!(status.actions[0].error.as_deref(), Some("permission denied"));
+    assert_eq!(
+        status.actions[0].error.as_deref(),
+        Some("permission denied")
+    );
 
     let m2 = out.iter().find(|m| m.machine == "m2").unwrap();
     assert!(m2.status.is_none());

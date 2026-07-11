@@ -49,8 +49,7 @@ pub fn read_status(basin_dir: &Path, machine: &str) -> Result<Option<StatusRepor
         Err(err) => return Err(err).with_context(|| format!("read {path:?}")),
     };
     let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(&bytes);
-    let report =
-        serde_json::from_slice(bytes).with_context(|| format!("parse {path:?}"))?;
+    let report = serde_json::from_slice(bytes).with_context(|| format!("parse {path:?}"))?;
     Ok(Some(report))
 }
 

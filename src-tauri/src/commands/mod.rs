@@ -690,8 +690,7 @@ fn basin_create_impl(
             .args(["remote", "add", "origin", url])
             .output()?;
         // "already exists" is fine on a re-run; anything else is not.
-        if !out.status.success()
-            && !String::from_utf8_lossy(&out.stderr).contains("already exists")
+        if !out.status.success() && !String::from_utf8_lossy(&out.stderr).contains("already exists")
         {
             anyhow::bail!(
                 "git remote add failed: {}",
@@ -758,7 +757,10 @@ fn secrets_env_path() -> Option<std::path::PathBuf> {
 
 /// Every `${secret:name}` referenced by the basin's mcp/*.json configs,
 /// with where (or whether) this machine can satisfy it.
-fn secrets_status_impl(store: &SkillStore) -> anyhow::Result<Vec<SecretStatusDto>> {
+fn secrets_status_impl(
+    store: &SkillStore,
+    env_file: Option<&std::path::Path>,
+) -> anyhow::Result<Vec<SecretStatusDto>> {
     let basin_dir = require_basin_dir(store)?;
     let mut names: Vec<String> = Vec::new();
     let mcp_dir = basin_dir.join("mcp");
@@ -776,11 +778,8 @@ fn secrets_status_impl(store: &SkillStore) -> anyhow::Result<Vec<SecretStatusDto
         }
     }
     names.sort();
-    let resolution = crate::core::secrets::resolve_secrets(
-        &names,
-        &crate::core::secrets::OsKeychain,
-        secrets_env_path().as_deref(),
-    );
+    let resolution =
+        crate::core::secrets::resolve_secrets(&names, &crate::core::secrets::OsKeychain, env_file);
     Ok(names
         .into_iter()
         .map(|name| {
@@ -789,20 +788,23 @@ fn secrets_status_impl(store: &SkillStore) -> anyhow::Result<Vec<SecretStatusDto
                 Some(crate::core::secrets::SecretSource::EnvFile) => "envFile",
                 None => "missing",
             };
-            SecretStatusDto { name, state: state.to_string() }
+            SecretStatusDto {
+                name,
+                state: state.to_string(),
+            }
         })
         .collect())
 }
 
 #[tauri::command]
-pub async fn secrets_status(
-    store: State<'_, SkillStore>,
-) -> Result<Vec<SecretStatusDto>, String> {
+pub async fn secrets_status(store: State<'_, SkillStore>) -> Result<Vec<SecretStatusDto>, String> {
     let store = store.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || secrets_status_impl(&store))
-        .await
-        .map_err(|err| err.to_string())?
-        .map_err(format_anyhow_error)
+    tauri::async_runtime::spawn_blocking(move || {
+        secrets_status_impl(&store, secrets_env_path().as_deref())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
 }
 
 /// Store a secret value in the OS keychain (never in the basin).
@@ -852,8 +854,7 @@ fn fleet_machines_impl(store: &SkillStore) -> anyhow::Result<Vec<FleetMachineDto
                 *pinned_by_tool.entry(tool.clone()).or_default() += 1;
             }
         }
-        let (status, status_error) = match crate::core::fleet::read_status(&basin_dir, &name)
-        {
+        let (status, status_error) = match crate::core::fleet::read_status(&basin_dir, &name) {
             Ok(report) => (report, None),
             Err(err) => (None, Some(format!("{err:#}"))),
         };
@@ -870,9 +871,7 @@ fn fleet_machines_impl(store: &SkillStore) -> anyhow::Result<Vec<FleetMachineDto
 
 /// Fleet roster for the Fleet screen — machine list, pin counts, health.
 #[tauri::command]
-pub async fn fleet_machines(
-    store: State<'_, SkillStore>,
-) -> Result<Vec<FleetMachineDto>, String> {
+pub async fn fleet_machines(store: State<'_, SkillStore>) -> Result<Vec<FleetMachineDto>, String> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || fleet_machines_impl(&store))
         .await
