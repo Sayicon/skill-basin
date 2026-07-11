@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-11
+
+First SkillBasin release — a fork of skills-hub (versions below 0.1.0 in this
+file are upstream history) rebuilt around one idea: your skills live in a git
+repo you own, every agent pins its own version, and remote machines keep
+themselves in sync.
+
+### Added
+- **Versioned basin**: skills live as side-by-side versions in your own git
+  repository — the single source of truth; SQLite is only a cache.
+- **Per-tool version pins**: each agent pins its own version of a skill;
+  updating a source never silently moves a pin.
+- **Fleet**: a 9 MB `skillbasin-agent` binary pulls the basin on remote
+  machines, applies that machine's pins with the same sync engine, and
+  reports health back into the repo. New Fleet screen shows every machine.
+- **skills-mcp server**: serves pinned skill versions to MCP clients that
+  have no directory loader (streamable HTTP + stdio, pure stdlib Python).
+- **License-aware Explore**: every marketplace result shows its license, and
+  installing an unlicensed skill asks first; skills.sh outages fall back to
+  GitHub search instead of an empty screen.
+- **Secrets**: basin configs carry `${secret:name}` placeholders only;
+  values resolve from the OS keychain, then `~/.skillbasin/secrets.env`.
+- **First-launch wizard**: connect an existing basin repo or create one.
+- Native Turkish UI alongside English and Chinese; dark-first Aura Dark
+  theme with a PowerShell ISE light theme.
+
+### Fixed
+- Windows: junction-aware deletes, long-path clone failures surfaced,
+  BOM-tolerant config parsing, day-scale scheduled tasks.
+- Pin/target consistency: disabling a tool stops pin sync writing into it;
+  deleting a skill cleans sidecar manifests; pinned installs render and
+  toggle correctly from the skill card.
+
 ## [0.7.0] - 2026-07-05
 
 ### Added
