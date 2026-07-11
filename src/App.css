@@ -5039,3 +5039,62 @@
 .fleet-copy-btn:hover { filter: brightness(1.08); }
 .fleet-copy-btn:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
 .fleet-copy-btn:active { transform: translateY(1px); }
+
+/* ── Basin & Secrets (Settings + first-launch wizard) ─────────────────── */
+.basin-setup { display: flex; flex-direction: column; gap: 12px; }
+.basin-mode-tabs { display: flex; gap: 8px; }
+.basin-mode-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-pill);
+  background: var(--bg-element); color: var(--text-secondary);
+  padding: 6px 14px; font-weight: 600; cursor: pointer;
+}
+.basin-mode-tab.active {
+  border-color: var(--accent-soft-border); background: var(--accent-soft-bg);
+  color: var(--accent-primary);
+}
+.basin-mode-tab:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.basin-submit {
+  align-self: flex-start;
+  border: 1px solid var(--accent-soft-border); border-radius: var(--radius-sm);
+  background: var(--accent-soft-bg); color: var(--accent-primary);
+  padding: 8px 16px; font-weight: 650; cursor: pointer;
+}
+.basin-submit.small { padding: 5px 12px; }
+.basin-submit:hover { filter: brightness(1.08); }
+.basin-submit:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+.basin-submit:disabled { opacity: 0.55; cursor: default; }
+.basin-skip {
+  align-self: flex-start; margin-top: 10px;
+  border: none; background: none; color: var(--text-tertiary);
+  font-size: 12.5px; cursor: pointer; text-decoration: underline;
+}
+.basin-skip:hover { color: var(--text-secondary); }
+.basin-kv {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 13px; color: var(--text-secondary); padding: 4px 0;
+}
+.basin-kv .mono { color: var(--text-primary); overflow-wrap: anywhere; text-align: right; }
+.basin-chip {
+  display: inline-flex; align-items: center; border-radius: var(--radius-pill);
+  padding: 2px 10px; font-size: 12px;
+  border: 1px solid var(--border-strong); background: var(--bg-element);
+  color: var(--text-secondary);
+}
+.basin-chip.ok { border-color: var(--success-soft-border); background: var(--success-soft-bg); color: var(--status-success); }
+.basin-chip.err { border-color: var(--danger-soft-border); background: var(--danger-soft-bg); color: var(--status-error); }
+.basin-chip.clickable { cursor: pointer; }
+.basin-chip.clickable:hover { filter: brightness(1.12); }
+.basin-broken-detail {
+  padding: 8px 10px; border-radius: var(--radius-sm);
+  background: var(--danger-soft-bg); border: 1px solid var(--danger-soft-border);
+  color: var(--status-error); font-size: 12px; overflow-wrap: anywhere;
+  margin-bottom: 10px;
+}
+.basin-empty { color: var(--text-tertiary); font-size: 13px; margin: 0; }
+.basin-wizard { max-width: 460px; }
+.basin-wizard-help { color: var(--text-secondary); font-size: 13.5px; }
+.secrets-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.secrets-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.secrets-edit { display: inline-flex; gap: 8px; align-items: center; flex: 1; min-width: 220px; }
+.secrets-edit .settings-input { flex: 1; }

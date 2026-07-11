@@ -3,11 +3,13 @@ import { ArrowLeft, Database, Github, Palette, RefreshCw } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { Update } from '@tauri-apps/plugin-updater'
 import type { GithubProxyConfigDto } from './types'
+import { BasinSettingsCard, SecretsSettingsCard } from './BasinPanel'
 
 type UpdateStatus = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'done' | 'error'
 
 type SettingsPageProps = {
   isTauri: boolean
+  invokeTauri: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>
   language: string
   storagePath: string
   gitCacheCleanupDays: number
@@ -29,6 +31,7 @@ type SettingsPageProps = {
 
 const SettingsPage = ({
   isTauri,
+  invokeTauri,
   language,
   storagePath,
   gitCacheCleanupDays,
@@ -325,6 +328,8 @@ const SettingsPage = ({
               </div>
             </div>
             </section>
+            <BasinSettingsCard invokeTauri={invokeTauri} t={t} />
+            <SecretsSettingsCard invokeTauri={invokeTauri} t={t} />
           </div>
 
           <div className="settings-column">

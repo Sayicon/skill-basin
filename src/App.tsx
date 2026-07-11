@@ -16,6 +16,7 @@ import remarkGfm from 'remark-gfm'
 import ExplorePage from './components/skills/ExplorePage'
 import FilterBar from './components/skills/FilterBar'
 import SkillDetailView from './components/skills/SkillDetailView'
+import { BasinSetupModal, type BasinStatus } from './components/skills/BasinPanel'
 import FleetPage from './components/skills/FleetPage'
 import Header from './components/skills/Header'
 import LoadingOverlay from './components/skills/LoadingOverlay'
@@ -113,6 +114,7 @@ function App() {
   )
   const [managedSkills, setManagedSkills] = useState<ManagedSkill[]>([])
   const [machinePins, setMachinePins] = useState<MachinePinsDto | null>(null)
+  const [basinSetup, setBasinSetup] = useState<BasinStatus | null>(null)
   const [latestVersions, setLatestVersions] = useState<Record<string, string>>({})
   const [localPath, setLocalPath] = useState('')
   const [localName, setLocalName] = useState('')
@@ -1316,6 +1318,20 @@ function App() {
     setActiveView('myskills')
     void loadMachinePins()
   }, [loadMachinePins])
+
+  // First-launch wizard: an unconfigured or broken basin must greet the user
+  // with a fix, not fail quietly behind every pin operation.
+  useEffect(() => {
+    if (!isTauri) return
+    void (async () => {
+      try {
+        const status = await invokeTauri<BasinStatus>('basin_status')
+        if (status.state !== 'ok') setBasinSetup(status)
+      } catch {
+        /* pre-onboarding startup must never crash the app */
+      }
+    })()
+  }, [isTauri, invokeTauri])
 
   const handleExploreFilterChange = useCallback(
     (value: string) => {
@@ -3397,6 +3413,15 @@ function App() {
 
   return (
     <div className="skills-app">
+      {basinSetup ? (
+        <BasinSetupModal
+          invokeTauri={invokeTauri}
+          status={basinSetup}
+          onDone={() => setBasinSetup(null)}
+          onSkip={() => setBasinSetup(null)}
+          t={t}
+        />
+      ) : null}
       <Toaster
         position="top-right"
         richColors
@@ -3611,6 +3636,7 @@ function App() {
         ) : activeView === 'settings' ? (
           <SettingsPage
             isTauri={isTauri}
+            invokeTauri={invokeTauri}
             language={language}
             storagePath={storagePath}
             gitCacheCleanupDays={gitCacheCleanupDays}
