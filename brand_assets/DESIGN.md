@@ -45,8 +45,11 @@ beyaz ISE kağıdı (hue 60) + ISE seçim mavisi (hue 213) + sarı vurgu.
 9. **i18n**: her yeni UI string'i en + tr + zh üçüne birden eklenir
    (`src/i18n/resources.ts`), sadece en'e bırakılmaz. Sayılı string'lerde çoğul
    formu `_one/_other` ile ver ("1 files" hatası tekrarlanmasın).
-10. **Wordmark**: ikonsuz, mono, "Skill" `--text-primary` + "Basin"
-    `--accent-primary`. Logo görseli geri getirilmez.
+10. **Logo + wordmark (revizyon 2026-07-11, Kerem logosu)**: header'da 26px
+   hexagon-havuz ikonu (`src/assets/logo-icon.png`; kaynak: `brand_assets/
+   logo-icon.png` 1024px, `logo-full.png` yazılı tam logo — dış zemin şeffaf,
+   hexagon içi de şeffaf: koyu temada app zeminiyle dolar). App ikon seti
+   `npx tauri icon brand_assets/logo-icon.png` ile üretilir. Wordmark: mono, "Skill" `--text-primary` + "Basin" `--accent-primary`.
 
 ## Bileşen desenleri (App.css'te hazır — yenisini uydurmadan bunları kullan)
 

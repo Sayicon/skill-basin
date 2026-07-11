@@ -1,4 +1,6 @@
-# SkillBasin
+<p align="center">
+  <img src="docs/assets/logo.png" alt="SkillBasin" width="340">
+</p>
 
 A desktop app for managing AI agent skills across every tool you use — from one
 git repository you own.

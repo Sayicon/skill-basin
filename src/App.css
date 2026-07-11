@@ -5098,3 +5098,10 @@
 .secrets-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .secrets-edit { display: inline-flex; gap: 8px; align-items: center; flex: 1; min-width: 220px; }
 .secrets-edit .settings-input { flex: 1; }
+
+/* ── Brand logo (header) ──────────────────────────────────────────────── */
+.brand-logo {
+  width: 26px;
+  height: 26px;
+  display: block;
+}

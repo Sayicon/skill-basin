@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import { Layers, Search, Server, Settings, SlidersHorizontal } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import logoIcon from '../../assets/logo-icon.png'
 
 type HeaderProps = {
   language: string
@@ -24,6 +25,7 @@ const Header = ({
     <header className="skills-header">
       <div className="header-left">
         <div className="brand-area">
+          <img className="brand-logo" src={logoIcon} alt="" aria-hidden="true" />
           <div className="brand-text-wrap">
             <div className="brand-text">
               Skill<span className="brand-text-accent">Basin</span>
