@@ -475,3 +475,255 @@ fn read_machine_pins_or_empty_returns_empty_set_when_missing() {
     assert_eq!(pins.machine, "never-seen");
     assert!(pins.pins.is_empty());
 }
+
+/// Property tests: the planner invariants hold for ANY pin set and ANY layout
+/// of unmanaged (manifest-less) directories, not just the cases we thought of.
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::path::Path;
+
+    const SKILLS: [&str; 3] = ["s0", "s1", "s2"];
+    const VERSIONS: [&str; 2] = ["1.0.0", "2.0.0"];
+    const TOOLS: [&str; 3] = ["t0", "t1", "t2"];
+    // Foreign dir names deliberately overlap skill names so pin targets can
+    // collide with unmanaged directories (the Conflict case).
+    const FOREIGN: [&str; 5] = ["s0", "s1", "s2", "x0", "x1"];
+
+    #[derive(Debug, Clone)]
+    struct PinSpec {
+        skill: usize,
+        tool: usize,
+        version: usize,
+        enabled: bool,
+        copy: bool,
+    }
+
+    fn pin_specs() -> impl Strategy<Value = Vec<PinSpec>> {
+        // At most one pin per (skill, tool) pair — same shape set_pin enforces.
+        proptest::collection::btree_map(
+            (0..SKILLS.len(), 0..TOOLS.len()),
+            (0..VERSIONS.len(), any::<bool>(), any::<bool>()),
+            0..=SKILLS.len() * TOOLS.len(),
+        )
+        .prop_map(|m| {
+            m.into_iter()
+                .map(|((skill, tool), (version, enabled, copy))| PinSpec {
+                    skill,
+                    tool,
+                    version,
+                    enabled,
+                    copy,
+                })
+                .collect()
+        })
+    }
+
+    fn foreign_specs() -> impl Strategy<Value = Vec<(usize, usize)>> {
+        proptest::collection::btree_set((0..TOOLS.len(), 0..FOREIGN.len()), 0..=4)
+            .prop_map(|s| s.into_iter().collect())
+    }
+
+    struct World {
+        _dir: tempfile::TempDir,
+        basin: PathBuf,
+        tool_dirs: BTreeMap<String, PathBuf>,
+        pins: MachinePins,
+        /// (tool_dir/<name>, marker content) for every unmanaged dir.
+        foreigns: Vec<(PathBuf, String)>,
+    }
+
+    fn build_world(specs: &[PinSpec], foreigns: &[(usize, usize)]) -> World {
+        let dir = tempfile::tempdir().unwrap();
+        let basin = dir.path().join("basin");
+        crate::core::basin::basin_init(&basin, "p", "2026-07-11").unwrap();
+        let src = dir.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        for skill in SKILLS {
+            for version in VERSIONS {
+                fs::write(src.join("SKILL.md"), format!("{skill} {version} body")).unwrap();
+                crate::core::basin::add_skill_version(
+                    &basin,
+                    skill,
+                    &src,
+                    version,
+                    "2026-07-11",
+                    None,
+                )
+                .unwrap();
+            }
+        }
+
+        let mut tool_dirs = BTreeMap::new();
+        for tool in TOOLS {
+            let d = dir.path().join(format!("tool-{tool}"));
+            fs::create_dir_all(&d).unwrap();
+            tool_dirs.insert(tool.to_string(), d);
+        }
+
+        let mut marks = Vec::new();
+        for &(tool_idx, name_idx) in foreigns {
+            let target = tool_dirs[TOOLS[tool_idx]].join(FOREIGN[name_idx]);
+            if !target.exists() {
+                fs::create_dir_all(&target).unwrap();
+                let content = format!("foreign {} {}", TOOLS[tool_idx], FOREIGN[name_idx]);
+                fs::write(target.join("FOREIGN.marker"), &content).unwrap();
+                marks.push((target, content));
+            }
+        }
+
+        let mut entries: BTreeMap<(usize, usize), BTreeMap<String, PinTarget>> = BTreeMap::new();
+        for spec in specs {
+            entries
+                .entry((spec.skill, spec.version))
+                .or_default()
+                .insert(
+                    TOOLS[spec.tool].to_string(),
+                    PinTarget {
+                        enabled: spec.enabled,
+                        strategy: if spec.copy { "copy" } else { "auto" }.to_string(),
+                    },
+                );
+        }
+        let pins = MachinePins {
+            machine: "prop".to_string(),
+            pins: entries
+                .into_iter()
+                .map(|((s, v), targets)| PinEntry {
+                    skill: SKILLS[s].to_string(),
+                    version: VERSIONS[v].to_string(),
+                    targets,
+                })
+                .collect(),
+        };
+
+        World {
+            _dir: dir,
+            basin,
+            tool_dirs,
+            pins,
+            foreigns: marks,
+        }
+    }
+
+    /// Full recursive (relative path -> file bytes) snapshot. Junctions and
+    /// symlinks are walked like plain dirs, so content changes behind a link
+    /// are visible too.
+    fn snapshot(root: &Path) -> BTreeMap<String, Vec<u8>> {
+        fn walk(base: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+            let Ok(entries) = fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                let rel = path
+                    .strip_prefix(base)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if path.is_dir() {
+                    out.insert(format!("{rel}/"), Vec::new());
+                    walk(base, &path, out);
+                } else {
+                    out.insert(rel, fs::read(&path).unwrap_or_default());
+                }
+            }
+        }
+        let mut out = BTreeMap::new();
+        walk(root, root, &mut out);
+        out
+    }
+
+    fn mutating_targets(plan: &[PlanAction]) -> Vec<&PathBuf> {
+        plan.iter()
+            .filter_map(|a| match a {
+                PlanAction::Install { target, .. }
+                | PlanAction::Update { target, .. }
+                | PlanAction::Remove { target, .. } => Some(target),
+                PlanAction::Conflict { .. } => None,
+            })
+            .collect()
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 16, .. ProptestConfig::default() })]
+
+        /// A directory without our sidecar manifest is never the target of a
+        /// mutating action, and its contents survive an apply untouched. If a
+        /// pin wants an occupied spot, the plan says Conflict — hands off.
+        #[test]
+        fn planner_never_touches_unmanaged_dirs(
+            specs in pin_specs(),
+            foreigns in foreign_specs(),
+        ) {
+            let w = build_world(&specs, &foreigns);
+            let plan = plan_sync(&w.pins, &w.tool_dirs).unwrap();
+
+            for target in mutating_targets(&plan) {
+                for (foreign, _) in &w.foreigns {
+                    prop_assert_ne!(target, foreign,
+                        "mutating action aimed at an unmanaged dir");
+                }
+            }
+
+            apply_plan(&w.basin, &plan).unwrap();
+            for (foreign, content) in &w.foreigns {
+                let marker = foreign.join("FOREIGN.marker");
+                prop_assert!(marker.exists(), "unmanaged dir lost its marker");
+                prop_assert_eq!(&fs::read_to_string(&marker).unwrap(), content);
+            }
+        }
+
+        /// After one apply, replanning yields no mutating actions (only the
+        /// Conflicts that can't converge), and a second apply changes nothing
+        /// on disk.
+        #[test]
+        fn apply_is_idempotent(
+            specs in pin_specs(),
+            foreigns in foreign_specs(),
+        ) {
+            let w = build_world(&specs, &foreigns);
+            let plan1 = plan_sync(&w.pins, &w.tool_dirs).unwrap();
+            apply_plan(&w.basin, &plan1).unwrap();
+
+            let plan2 = plan_sync(&w.pins, &w.tool_dirs).unwrap();
+            prop_assert!(mutating_targets(&plan2).is_empty(),
+                "second plan still wants changes: {:?}", plan2);
+
+            let before: Vec<_> = w.tool_dirs.values().map(|d| snapshot(d)).collect();
+            apply_plan(&w.basin, &plan2).unwrap();
+            let after: Vec<_> = w.tool_dirs.values().map(|d| snapshot(d)).collect();
+            prop_assert_eq!(before, after, "second apply mutated the tree");
+        }
+
+        /// Dropping every pin removes exactly the managed installs: foreign
+        /// dirs stay, sidecar manifests disappear, and the basin's versioned
+        /// store is bit-for-bit untouched.
+        #[test]
+        fn unpinning_everything_cleans_managed_only(
+            specs in pin_specs(),
+            foreigns in foreign_specs(),
+        ) {
+            let w = build_world(&specs, &foreigns);
+            let basin_before = snapshot(&w.basin.join("skills"));
+
+            let plan1 = plan_sync(&w.pins, &w.tool_dirs).unwrap();
+            apply_plan(&w.basin, &plan1).unwrap();
+
+            let empty = MachinePins { machine: "prop".to_string(), pins: Vec::new() };
+            let plan2 = plan_sync(&empty, &w.tool_dirs).unwrap();
+            apply_plan(&w.basin, &plan2).unwrap();
+
+            for dir in w.tool_dirs.values() {
+                for entry in fs::read_dir(dir).unwrap().flatten() {
+                    let path = entry.path();
+                    let is_foreign = w.foreigns.iter().any(|(f, _)| *f == path);
+                    prop_assert!(is_foreign,
+                        "leftover after full unpin: {:?}", path);
+                }
+            }
+            prop_assert_eq!(basin_before, snapshot(&w.basin.join("skills")),
+                "basin store changed during sync/unpin");
+        }
+    }
+}

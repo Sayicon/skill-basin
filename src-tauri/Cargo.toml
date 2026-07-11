@@ -43,6 +43,7 @@ zip = { version = "4.2.0", default-features = false, features = ["deflate"] }
 [dev-dependencies]
 tempfile = "3"
 mockito = "1"
+proptest = "1"
 
 [features]
 # Off by default — only enables the tauri-mcp-server dev tool's Rust-side
