@@ -341,6 +341,42 @@ pub fn basin_push(basin_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Push, and if the remote has moved on, rebase THIS machine's commit on top
+/// and push again — once. A fleet agent races the desktop (both push to the
+/// same basin); a plain push would be rejected and, crucially, a later
+/// `reset --hard` pull would then destroy the un-pushed commit. Rebase keeps
+/// the local commit; `git pull` is NOT used because its reset-hard path would
+/// discard it. Returns Err only if the retry also fails.
+pub fn basin_push_with_rebase(basin_dir: &Path) -> Result<()> {
+    if basin_push(basin_dir).is_ok() {
+        return Ok(());
+    }
+    let run = |args: &[&str]| -> Result<std::process::Output> {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(basin_dir)
+            .output()
+            .with_context(|| format!("run git {args:?} in {basin_dir:?}"))
+    };
+    // Fetch the remote head and replay our single commit on top of it.
+    let fetch = run(&["fetch", "origin"])?;
+    if !fetch.status.success() {
+        anyhow::bail!(
+            "git fetch failed during push retry: {}",
+            String::from_utf8_lossy(&fetch.stderr).trim()
+        );
+    }
+    let rebase = run(&["rebase", "origin/HEAD"])?;
+    if !rebase.status.success() {
+        let _ = run(&["rebase", "--abort"]);
+        anyhow::bail!(
+            "git rebase failed during push retry (conflicting basin edits?): {}",
+            String::from_utf8_lossy(&rebase.stderr).trim()
+        );
+    }
+    basin_push(basin_dir)
+}
+
 /// Record the current content of `updated_dir` as a new version of `id`
 /// unless it is content-identical to the skill's latest version.
 /// Pins are never touched here — updates only ADD versions (never overwrite).

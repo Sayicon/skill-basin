@@ -143,6 +143,54 @@ fn apply_installs_pins_and_pushes_status() {
 }
 
 #[test]
+fn apply_survives_a_racing_push_without_losing_status() {
+    // The desktop pushes to the same basin between this agent's fetch and its
+    // push. A plain push is rejected; the agent must rebase and retry, keeping
+    // BOTH commits — its status.json must reach the remote, not be discarded.
+    let (dir, bare) = seeded_remote(pins_with(vec![pin("demo", "1.0.0", "t0")]));
+    let cfg = agent_config(dir.path(), &bare);
+    run_init(&cfg).unwrap();
+    run_apply(&cfg).unwrap();
+
+    // A concurrent editor pushes an unrelated change to the same branch.
+    let editor = dir.path().join("editor");
+    Command::new("git")
+        .args(["clone", bare.to_str().unwrap()])
+        .arg(&editor)
+        .output()
+        .unwrap();
+    std::fs::write(editor.join("README.md"), "desktop was here").unwrap();
+    git(&editor, &["add", "-A"]);
+    git(
+        &editor,
+        &[
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-m",
+            "desktop edit",
+        ],
+    );
+    git(&editor, &["push"]);
+
+    // Agent applies again (writes a fresh status.json) → push races → rebase.
+    let report = run_apply(&cfg).unwrap();
+    assert!(report.ok, "{report:?}");
+
+    // BOTH survived on the remote: the desktop's README and the agent's status.
+    assert_eq!(
+        show_from_remote(&bare, "README.md").as_deref(),
+        Some("desktop was here")
+    );
+    let status = show_from_remote(&bare, "machines/m1/status.json")
+        .expect("agent status must survive the racing push");
+    let parsed: StatusReport = serde_json::from_str(&status).unwrap();
+    assert_eq!(parsed.machine, "m1");
+}
+
+#[test]
 fn apply_picks_up_remote_pin_changes() {
     let (dir, bare) = seeded_remote(pins_with(vec![pin("demo", "1.0.0", "t0")]));
     let cfg = agent_config(dir.path(), &bare);

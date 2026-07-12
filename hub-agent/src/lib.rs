@@ -122,9 +122,31 @@ pub fn run_apply(config: &AgentConfig) -> Result<StatusReport> {
         &config.basin_dir,
         &format!("status: {} apply", config.machine),
     )?;
-    basin::basin_push(&config.basin_dir)?;
+    // Rebase-retry so a race with the desktop doesn't lose this commit. A
+    // push failure is reported to the CALLER but must NOT masquerade as an
+    // apply failure: the skills are already on disk, and cron/systemd need to
+    // tell "a pin failed" from "applied fine, publishing status failed".
+    if let Err(err) = basin::basin_push_with_rebase(&config.basin_dir) {
+        return Err(ApplyError::PushFailed {
+            report: Box::new(report),
+            source: err,
+        }
+        .into());
+    }
 
     Ok(report)
+}
+
+/// Distinguishes "the apply itself is fine, only publishing status failed"
+/// from a genuine apply error — the CLI maps them to different exit signals.
+#[derive(Debug, thiserror::Error)]
+pub enum ApplyError {
+    #[error("apply succeeded but pushing status failed: {source:#}")]
+    PushFailed {
+        report: Box<StatusReport>,
+        #[source]
+        source: anyhow::Error,
+    },
 }
 
 /// Load agent config from a JSON file (BOM-tolerant: Windows editors and

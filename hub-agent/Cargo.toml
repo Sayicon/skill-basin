@@ -17,6 +17,7 @@ path = "src/main.rs"
 # Headless core only — no tauri, no webkit, no display.
 app_lib = { package = "app", path = "../src-tauri", default-features = false }
 anyhow = "1.0"
+thiserror = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"

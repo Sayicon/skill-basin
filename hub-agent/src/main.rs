@@ -62,8 +62,21 @@ fn main() -> ExitCode {
 
     match result {
         Ok(true) => ExitCode::SUCCESS,
-        Ok(false) => ExitCode::FAILURE, // partial failure is visible to cron/systemd too
+        Ok(false) => ExitCode::FAILURE, // a pin failed — visible to cron/systemd
         Err(err) => {
+            // "Applied fine, only status push failed" is not an apply failure:
+            // the skills are on disk. Report it, but let the exit code follow
+            // whether the apply itself was clean, not the publish step.
+            if let Some(hub_agent::ApplyError::PushFailed { report, .. }) =
+                err.downcast_ref::<hub_agent::ApplyError>()
+            {
+                eprintln!("warning: {err:#}");
+                return if report.ok {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::FAILURE
+                };
+            }
             eprintln!("{mode} failed: {err:#}");
             ExitCode::FAILURE
         }
