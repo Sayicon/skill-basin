@@ -1,0 +1,48 @@
+FAZ 8 test kaydı — 2026-07-11/12
+
+== Rust (scripts/test-rust.ps1, Windows, desktop) ==
+test result: ok. 220 passed; 0 failed
+Yeni FAZ 8 testleri:
+- secrets (core): 8 spec — keychain>envFile sırası, folded/literal/continuation
+  YAML, BOM, missing-listesi, placeholder çıkarımı (FakeKeychain'le)
+- basin lifecycle (command): notConfigured/broken-nedenli/ok; connect
+  manifest doğrulamadan setting'i çevirmez; create +remote push — 4 spec
+- secrets_status (command): basin yoksa hata (L2), ref'ler toplanır/dedup/sıralı,
+  bozuk JSON bile ref'ini saklamaz, kaynak raporlanır — 3 spec; env path enjekte
+  (L9: gerçek secrets.env'e dokunmaz)
+
+== hub-agent (5) + Python skills-mcp (16) ==
+Değişmedi, yeşil.
+
+== Frontend ==
+tsc/eslint/ast-grep temiz · vitest 44/44
+Fleet ekranı + Settings havuz/secrets kartları + ilk-açılış sihirbazı canlı
+render doğrulandı. Logo header'a + README'ye + tam tauri ikon setine işlendi.
+
+== RELEASE — v0.1.0 GERÇEK YAYIN (2026-07-12) ==
+GitHub Actions release.yml (workflow_dispatch, ref v0.1.0, commit 78588b7):
+5 platform paketi + agent binary + imzalı updater.json YAYINLANDI.
+https://github.com/Sayicon/skill-basin/releases/tag/v0.1.0
+
+Asset'ler (14):
+- Windows x64 + arm64 (.exe, NSIS) + .sig
+- macOS x64 + arm64 (.dmg + .tar.gz updater) + .sig
+- Linux x64 (.deb + .AppImage) + .sig
+- skillbasin-agent-v0.1.0-Linux-x64 (9.3MB, fleet agent)
+- updater.json: 5 platform, imzalar 408-424 char (dolu, doğrulandı)
+
+Release yolundaki 3 gerçek hata bulundu+düzeltildi (hepsi CI'da yakalandı,
+lokal test göstermezdi):
+1. Fork'ta Actions kapalıydı — hiç workflow koşmamıştı (Kerem açtı).
+2. Updater signing key: tauri signer key'i HER ZAMAN şifreler; şifresiz
+   denemeler CI'ın açamadığı key üretti → bilinen şifreli key + 2. secret
+   (TAURI_SIGNING_PRIVATE_KEY_PASSWORD). Lokal imza testiyle doğrulandı.
+   BONUS: updater endpoint'i upstream repo'ya bakıyordu (kullanıcıya upstream
+   build'i "güncelleme" diye sunuyordu) → kendi kanal + kendi pubkey.
+3. Smoke testleri binary adı varsayımıyla + pipefail tuzağıyla patlıyordu
+   (paket 'skill-basin', pattern 'skillbasin*'); build+imza yeşilken release'i
+   bloklamamalı → continue-on-error + dpkg -L tabanlı binary bulma.
+
+== Not ==
+Actions ilk kez fork'ta koştuğu için CI (3-OS matris) de bu vesileyle
+GitHub'da ilk gerçek doğrulamasını aldı — FAZ 0'dan beri lokal koşuyordu.
