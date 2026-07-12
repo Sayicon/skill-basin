@@ -476,6 +476,41 @@ fn read_machine_pins_or_empty_returns_empty_set_when_missing() {
     assert!(pins.pins.is_empty());
 }
 
+#[test]
+fn set_pins_enabled_disables_then_restores_a_managed_install() {
+    let basin = fixture_basin();
+    let claude = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &claude)]);
+
+    let installed = MachinePins {
+        machine: "m".to_string(),
+        pins: vec![pin("demo", "1.0.0", &["claude_code"])],
+    };
+    write_machine_pins(basin.path(), &installed).unwrap();
+    apply_plan(basin.path(), &plan_sync(&installed, &dirs).unwrap()).unwrap();
+    assert!(claude.path().join("demo").exists());
+
+    // Disable: the pin stays in the lockfile but the managed install is gone.
+    let (pins, results) = set_pins_enabled(basin.path(), "m", "demo", false, &dirs).unwrap();
+    assert!(results.iter().all(|r| r.ok), "{results:?}");
+    assert!(
+        !claude.path().join("demo").exists(),
+        "disable must remove install"
+    );
+    assert!(
+        !pins.pins[0].targets["claude_code"].enabled,
+        "pin is retained but flagged disabled"
+    );
+
+    // Re-enable: the exact same version comes back.
+    let (_, results) = set_pins_enabled(basin.path(), "m", "demo", true, &dirs).unwrap();
+    assert!(results.iter().all(|r| r.ok), "{results:?}");
+    assert_eq!(
+        fs::read_to_string(claude.path().join("demo/SKILL.md")).unwrap(),
+        "demo v1"
+    );
+}
+
 /// Property tests: the planner invariants hold for ANY pin set and ANY layout
 /// of unmanaged (manifest-less) directories, not just the cases we thought of.
 mod proptests {

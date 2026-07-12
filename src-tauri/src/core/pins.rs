@@ -212,6 +212,32 @@ pub fn unset_pin(
     Ok((pins, results))
 }
 
+/// Flip every pin target of `skill` on/off and re-apply. Disabling keeps the
+/// pin (so a re-enable restores the exact version) but sets `enabled=false`,
+/// which `plan_sync` already honors by removing the managed install — the
+/// pin-side counterpart of a SQLite target's "disabled" status, so that
+/// disabling a pin-installed skill is not a silent no-op.
+pub fn set_pins_enabled(
+    basin_dir: &Path,
+    machine: &str,
+    skill: &str,
+    enabled: bool,
+    tool_dirs: &BTreeMap<String, PathBuf>,
+) -> Result<(MachinePins, Vec<ApplyResult>)> {
+    let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
+    for entry in pins.pins.iter_mut() {
+        if entry.skill == skill {
+            for target in entry.targets.values_mut() {
+                target.enabled = enabled;
+            }
+        }
+    }
+    write_machine_pins(basin_dir, &pins)?;
+    let plan = plan_sync(&pins, tool_dirs)?;
+    let results = apply_plan(basin_dir, &plan)?;
+    Ok((pins, results))
+}
+
 /// Path of the sibling manifest for a given target directory.
 pub fn manifest_path_for(target: &Path) -> PathBuf {
     let mut name = target

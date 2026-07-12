@@ -998,6 +998,24 @@ fn fleet_machines_lists_roster_with_status_and_pin_counts() {
     assert!(m2.status.is_none());
     assert!(m2.status_error.as_deref().unwrap_or("").contains("parse"));
 
+    // A machine whose PINS are corrupt must degrade to an error row, not
+    // abort the whole roster (mirrors the status.json resilience).
+    let m3 = basin_dir.join("machines/m3");
+    std::fs::create_dir_all(&m3).unwrap();
+    std::fs::write(m3.join("pins.json"), "{bozuk pins").unwrap();
+    let out = fleet_machines_impl(&store).unwrap();
+    let m3row = out.iter().find(|m| m.machine == "m3").unwrap();
+    assert!(m3row.pinned_by_tool.is_empty());
+    assert!(m3row
+        .status_error
+        .as_deref()
+        .unwrap_or("")
+        .contains("parse"));
+    // ...and the healthy machine m1 is still present and intact.
+    assert!(out
+        .iter()
+        .any(|m| m.machine == "m1" && !m.pinned_by_tool.is_empty()));
+
     let me = out.iter().find(|m| m.machine == current_id).unwrap();
     assert!(me.is_current);
     assert!(me.status.is_none());

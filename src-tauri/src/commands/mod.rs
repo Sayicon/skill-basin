@@ -41,7 +41,10 @@ use crate::core::network_proxy::{
     set_github_proxy_url as set_github_proxy_url_core, GithubProxyConfig,
 };
 use crate::core::onboarding::{build_onboarding_plan, OnboardingPlan};
-use crate::core::pins::{read_machine_pins_or_empty, set_pin, unset_pin, MachinePins, PinTarget};
+use crate::core::pins::{
+    machine_pins_path, read_machine_pins, read_machine_pins_or_empty, set_pin, unset_pin,
+    MachinePins, PinTarget,
+};
 use crate::core::skill_store::{SkillStore, SkillTargetRecord};
 use crate::core::skills_search::{
     search_skills_online as search_skills_online_core, OnlineSkillResult,
@@ -846,7 +849,25 @@ fn fleet_machines_impl(store: &SkillStore) -> anyhow::Result<Vec<FleetMachineDto
 
     let mut out = Vec::with_capacity(names.len());
     for name in names {
-        let pins = read_machine_pins_or_empty(&basin_dir, &name)?;
+        // One machine's corrupt pins.json must not sink the whole roster:
+        // surface it as that machine's error, exactly like status.json below.
+        let (pins, pins_error) = match read_machine_pins(&basin_dir, &name) {
+            Ok(pins) => (pins, None),
+            Err(_) if !machine_pins_path(&basin_dir, &name).exists() => (
+                MachinePins {
+                    machine: name.clone(),
+                    pins: Vec::new(),
+                },
+                None,
+            ),
+            Err(err) => (
+                MachinePins {
+                    machine: name.clone(),
+                    pins: Vec::new(),
+                },
+                Some(format!("{err:#}")),
+            ),
+        };
         let mut pinned_by_tool: std::collections::BTreeMap<String, u32> =
             std::collections::BTreeMap::new();
         for entry in &pins.pins {
@@ -858,6 +879,7 @@ fn fleet_machines_impl(store: &SkillStore) -> anyhow::Result<Vec<FleetMachineDto
             Ok(report) => (report, None),
             Err(err) => (None, Some(format!("{err:#}"))),
         };
+        let status_error = status_error.or(pins_error);
         out.push(FleetMachineDto {
             is_current: name == current,
             machine: name,
@@ -1803,6 +1825,27 @@ pub async fn set_skill_enabled(
 ) -> Result<(), String> {
     let store = store.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
+        // Disabling must reach BOTH install systems or it is a partial no-op:
+        // a pin-installed skill has no SQLite target, so the legacy path alone
+        // leaves it live and the next apply re-materializes it.
+        let skill_name = store.get_skill_by_id(&skillId)?.map(|skill| skill.name);
+        if let Some(name) = &skill_name {
+            if let Some(basin_dir) = configured_basin_dir(&store)? {
+                let machine = current_machine_id(&store)?;
+                let tool_dirs = resolved_tool_dirs(&basin_dir, &load_tool_config(&store)?)?;
+                crate::core::pins::set_pins_enabled(
+                    &basin_dir, &machine, name, enabled, &tool_dirs,
+                )?;
+                crate::core::basin::basin_commit_all(
+                    &basin_dir,
+                    &format!(
+                        "{} pins for {name}",
+                        if enabled { "enable" } else { "disable" }
+                    ),
+                )?;
+            }
+        }
+
         if !enabled {
             let targets = store.list_skill_targets(&skillId)?;
             let mut remove_failures: Vec<String> = Vec::new();
