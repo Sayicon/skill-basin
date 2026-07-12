@@ -135,6 +135,28 @@ fn blank_license_string_is_treated_as_unknown() {
     assert_eq!(out[0].license, None);
 }
 
+#[test]
+fn spdx_unknown_sentinels_are_treated_as_no_license() {
+    // Same guard github_search.rs applies — a card must not show "NOASSERTION".
+    let mut server = mockito::Server::new();
+    let _m = server
+        .mock("GET", "/api/search")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"skills":[
+                {"name":"a","installs":1,"source":"a/b","license":"NOASSERTION"},
+                {"name":"c","installs":1,"source":"c/d","license":"none"}
+            ]}"#,
+        )
+        .create();
+
+    let out = search_skills_online_inner(&server.url(), "x", 10).unwrap();
+    assert_eq!(out[0].license, None);
+    assert_eq!(out[1].license, None);
+}
+
 // ── Cache: an unofficial API needs a local buffer ─────────────────────────
 
 #[test]

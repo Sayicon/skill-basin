@@ -161,10 +161,19 @@ fn search_skills_online_inner(
                 installs: item.installs,
                 source: item.source,
                 source_url,
+                // "unknown" reaches us as an empty string OR an SPDX sentinel
+                // (NOASSERTION / NONE); github_search.rs filters both, so
+                // skills.sh results must too — otherwise the card shows a
+                // meaningless "NOASSERTION" license depending on which index
+                // answered.
                 license: item
                     .license
                     .map(|value| value.trim().to_string())
-                    .filter(|value| !value.is_empty()),
+                    .filter(|value| {
+                        !value.is_empty()
+                            && !value.eq_ignore_ascii_case("NOASSERTION")
+                            && !value.eq_ignore_ascii_case("NONE")
+                    }),
             }
         })
         .collect())

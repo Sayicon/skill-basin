@@ -63,7 +63,20 @@ fn read_env_file(path: &Path) -> BTreeMap<String, String> {
         }
         let line = line.strip_prefix("export ").unwrap_or(line);
         if let Some((key, value)) = line.split_once('=') {
-            out.insert(key.trim().to_string(), value.trim().to_string());
+            let value = value.trim();
+            // A quoted value keeps its inner text verbatim (spaces included);
+            // an unquoted one is trimmed. Without this, a secret like
+            // `TOKEN="a b "` resolves WITH the quotes and loses the trailing
+            // space — i.e. to the wrong credential.
+            let value = if value.len() >= 2
+                && ((value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\'')))
+            {
+                &value[1..value.len() - 1]
+            } else {
+                value
+            };
+            out.insert(key.trim().to_string(), value.to_string());
         }
     }
     out

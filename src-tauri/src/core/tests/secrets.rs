@@ -97,3 +97,29 @@ fn env_file_with_bom_still_parses() {
     let out = resolve_secrets(&["key".to_string()], &keychain, Some(&path));
     assert_eq!(out.resolved["key"], "bom-lu");
 }
+
+#[test]
+fn env_file_unwraps_quotes_and_preserves_inner_space() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = env_file(
+        dir.path(),
+        "dquoted=\"a b \"\nsquoted='  x'\nplain=  düz değer  \nbare=tek\n",
+    );
+    let keychain = FakeKeychain(BTreeMap::new());
+    let out = resolve_secrets(
+        &[
+            "dquoted".to_string(),
+            "squoted".to_string(),
+            "plain".to_string(),
+            "bare".to_string(),
+        ],
+        &keychain,
+        Some(&path),
+    );
+    // Quoted: inner text verbatim (trailing space kept, quotes gone).
+    assert_eq!(out.resolved["dquoted"], "a b ");
+    assert_eq!(out.resolved["squoted"], "  x");
+    // Unquoted: trimmed.
+    assert_eq!(out.resolved["plain"], "düz değer");
+    assert_eq!(out.resolved["bare"], "tek");
+}

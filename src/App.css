@@ -4174,7 +4174,7 @@
 
 .explore-btn-install {
   background: var(--accent-primary);
-  color: white;
+  color: var(--accent-primary-fg);
   height: 30px;
   padding: 0 14px;
   font-size: 12px;

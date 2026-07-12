@@ -260,7 +260,15 @@ def handle_tool_call(catalog, name: str, args: dict) -> dict:
     return tool_error(f"Unknown tool: {name}")
 
 
-def handle_request(catalog, req: dict):
+def handle_request(catalog, req):
+    # Valid JSON that is not an object (a batch array, a bare string/number)
+    # must not crash the server via req.get(...); reject it as JSON-RPC does.
+    if not isinstance(req, dict):
+        return {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32600, "message": "Invalid Request: expected a JSON object"},
+        }
     method = req.get("method", "")
     rid = req.get("id")
     if method == "initialize":

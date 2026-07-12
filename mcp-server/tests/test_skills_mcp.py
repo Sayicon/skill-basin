@@ -188,6 +188,20 @@ class BasinModeTests(unittest.TestCase):
         self.assertEqual(cat.list(), [])
 
 
+class HandleRequestTests(unittest.TestCase):
+    def test_non_object_payload_is_rejected_not_crashed(self):
+        cat = srv.DirCatalog(tempfile.gettempdir())
+        for bad in ([1, 2, 3], "hello", 42, None):
+            resp = srv.handle_request(cat, bad)
+            self.assertIsNotNone(resp, f"{bad!r} must get an error response")
+            self.assertEqual(resp["error"]["code"], -32600)
+
+    def test_object_payload_still_works(self):
+        cat = srv.DirCatalog(tempfile.gettempdir())
+        resp = srv.handle_request(cat, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+        self.assertIn("result", resp)
+
+
 def rpc_lines(proc, payload):
     proc.stdin.write(json.dumps(payload) + "\n")
     proc.stdin.flush()
