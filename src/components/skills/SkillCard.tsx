@@ -138,6 +138,13 @@ const SkillCard = ({
   return (
     <div
       className={`skill-card${bulkMode ? ' bulk-mode' : ''}${bulkSelected ? ' bulk-selected' : ''}${!skillEnabled ? ' disabled-skill' : ''}`}
+      onDoubleClick={(e) => {
+        // Double-click anywhere on the card opens the detail view, except on
+        // the interactive controls (buttons, tool pills) which own the click.
+        if (!bulkMode && !(e.target as HTMLElement).closest('button')) {
+          onOpenDetail(skill)
+        }
+      }}
     >
       {bulkMode ? (
         <label className="bulk-skill-check" aria-label={t('bulk.toggleSkill')}>

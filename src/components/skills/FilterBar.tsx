@@ -1,7 +1,77 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ArrowUpDown, Check, CheckSquare, ChevronDown, Search, Tags } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { TagWithCountDto } from './types'
+
+type DropdownOption<T extends string> = { value: T; label: string }
+
+/**
+ * A themed single-select. Replaces a native <select>, whose OS-drawn option
+ * list ignores the app theme (a stark white system popup in dark mode).
+ */
+function Dropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  icon,
+}: {
+  value: T
+  options: DropdownOption<T>[]
+  onChange: (value: T) => void
+  ariaLabel: string
+  icon: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+  const current = options.find((o) => o.value === value)
+  return (
+    <div className="fb-dropdown" ref={ref}>
+      <button
+        className="btn btn-secondary sort-btn"
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        {current?.label ?? ''}
+        {icon}
+        <ChevronDown size={12} />
+      </button>
+      {open ? (
+        <div className="fb-dropdown-menu" role="listbox" aria-label={ariaLabel}>
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              role="option"
+              aria-selected={o.value === value}
+              className={`fb-dropdown-option${o.value === value ? ' selected' : ''}`}
+              onClick={() => {
+                onChange(o.value)
+                setOpen(false)
+              }}
+            >
+              <span className="fb-dropdown-check">
+                {o.value === value ? <Check size={14} /> : null}
+              </span>
+              <span>{o.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 type FilterBarProps = {
   sortBy: 'updated' | 'name'
@@ -79,35 +149,23 @@ const FilterBar = ({
         {t('allSkills')}（{totalCount}）
       </div>
       <div className="filter-actions">
-        <button className="btn btn-secondary sort-btn" type="button">
-          {scopeOptions.find((option) => option.value === scopeFilter)?.label ?? t('scope.all')}
-          <ChevronDown size={12} />
-          <select
-            aria-label={t('scope.filterLabel')}
-            value={scopeFilter}
-            onChange={(event) =>
-              onScopeFilterChange(event.target.value as 'all' | 'global' | 'project')
-            }
-          >
-            {scopeOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </button>
-        <button className="btn btn-secondary sort-btn" type="button">
-          {sortBy === 'updated' ? t('sortUpdated') : t('sortName')}
-          <ArrowUpDown size={12} />
-          <select
-            aria-label={t('filterSort')}
-            value={sortBy}
-            onChange={(event) => onSortChange(event.target.value as 'updated' | 'name')}
-          >
-            <option value="updated">{t('sortUpdated')}</option>
-            <option value="name">{t('sortName')}</option>
-          </select>
-        </button>
+        <Dropdown
+          value={scopeFilter}
+          options={scopeOptions}
+          onChange={onScopeFilterChange}
+          ariaLabel={t('scope.filterLabel')}
+          icon={null}
+        />
+        <Dropdown
+          value={sortBy}
+          options={[
+            { value: 'updated', label: t('sortUpdated') },
+            { value: 'name', label: t('sortName') },
+          ]}
+          onChange={onSortChange}
+          ariaLabel={t('filterSort')}
+          icon={<ArrowUpDown size={12} />}
+        />
         <button
           className={`btn btn-secondary bulk-mode-btn${bulkMode ? ' active' : ''}`}
           type="button"

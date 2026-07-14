@@ -4216,6 +4216,187 @@
   flex-shrink: 0;
 }
 
+/* Filter row: source chips on the left, licensed toggle + sort on the right. */
+.explore-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.explore-filter-row .explore-source-filters {
+  margin-top: 0;
+  padding-left: 0;
+}
+
+.explore-filter-spacer {
+  flex: 1;
+}
+
+.explore-menu-btn {
+  height: 28px;
+}
+
+/* Sentinel the IntersectionObserver watches to page in more cards; it needs a
+   little height so it can actually enter the viewport near the list's end. */
+.explore-sentinel {
+  height: 1px;
+}
+
+/* ===== Explore Detail Modal ===== */
+.explore-detail-modal {
+  width: 560px;
+  max-width: 92vw;
+}
+
+.explore-detail-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.explore-detail-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  color: var(--text-tertiary);
+}
+
+.explore-detail-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.explore-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-element);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.explore-detail-chip.warn {
+  background: var(--warning-soft-bg);
+  border-color: var(--warning-soft-border);
+  color: var(--status-warning);
+}
+
+.explore-detail-summary {
+  margin: 0 0 16px 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.explore-detail-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 7px 11px;
+  margin-bottom: 18px;
+  border-radius: var(--radius-md, 8px);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+  color: var(--accent-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.explore-detail-source:hover {
+  border-color: var(--accent-soft-border);
+  background: var(--accent-soft-bg);
+}
+
+.explore-detail-source .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.explore-detail-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+
+.explore-detail-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-element);
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+}
+
+.explore-detail-sub-note {
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: 6px 0;
+}
+
+.explore-detail-sub-note.error {
+  color: var(--status-error);
+}
+
+.explore-detail-sub-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.explore-detail-sub {
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-app);
+}
+
+.explore-detail-sub-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.explore-detail-sub-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.explore-detail-sub-path {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
 /* ===== Skill Detail View ===== */
 .detail-view {
   flex: 1;
@@ -5175,4 +5356,63 @@
 }
 .win-ctl-close:active {
   filter: brightness(0.92);
+}
+
+/* ── Themed dropdown (replaces native <select> in the filter bar) ──────── */
+.fb-dropdown {
+  position: relative;
+  flex-shrink: 0;
+}
+.fb-dropdown > .sort-btn {
+  position: static;
+}
+.fb-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 30;
+}
+.fb-dropdown-option {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px 0 4px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+}
+.fb-dropdown-option:hover {
+  background: var(--bg-element-hover);
+  color: var(--text-primary);
+}
+.fb-dropdown-option.selected {
+  color: var(--accent-primary);
+}
+.fb-dropdown-option:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+.fb-dropdown-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
 }

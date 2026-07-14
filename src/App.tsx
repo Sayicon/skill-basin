@@ -35,6 +35,7 @@ import NewToolsModal from './components/skills/modals/NewToolsModal'
 import ScopeSyncModal from './components/skills/modals/ScopeSyncModal'
 import SharedDirModal from './components/skills/modals/SharedDirModal'
 import UnlicensedInstallModal from './components/skills/modals/UnlicensedInstallModal'
+import ExploreDetailModal from './components/skills/modals/ExploreDetailModal'
 import SettingsPage from './components/skills/SettingsPage'
 import ToolsPage from './components/skills/ToolsPage'
 import UpdatesPage from './components/skills/UpdatesPage'
@@ -55,6 +56,7 @@ import {
 } from './components/skills/installScope'
 import type {
   AutoUpdateConfigDto,
+  ExploreDetailSeed,
   FeaturedSkillDto,
   GitSkillCandidate,
   GithubProxyConfigDto,
@@ -178,6 +180,7 @@ function App() {
   const [featuredSkills, setFeaturedSkills] = useState<FeaturedSkillDto[]>([])
   const [featuredLoading, setFeaturedLoading] = useState(false)
   const [exploreFilter, setExploreFilter] = useState('')
+  const [exploreDetail, setExploreDetail] = useState<ExploreDetailSeed | null>(null)
   const [searchResults, setSearchResults] = useState<OnlineSkillDto[]>([])
   const [searchLoading, setSearchLoading] = useState(false)
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -2701,6 +2704,42 @@ function App() {
     [startExploreInstall],
   )
 
+  const handleOpenExternal = useCallback(
+    async (url: string) => {
+      if (!url) return
+      try {
+        if (isTauri) {
+          const { openUrl } = await import('@tauri-apps/plugin-opener')
+          await openUrl(url)
+          return
+        }
+      } catch {
+        // Fall through to a plain window.open when the opener plugin is absent.
+      }
+      window.open(url, '_blank', 'noopener,noreferrer')
+    },
+    [isTauri],
+  )
+
+  const fetchExploreSubSkills = useCallback(
+    (repoUrl: string) =>
+      invokeTauri<GitSkillCandidate[]>('list_git_skills_cmd', { repoUrl }),
+    [invokeTauri],
+  )
+
+  const handleExploreDetailInstall = useCallback(
+    (seed: ExploreDetailSeed) => {
+      setExploreDetail(null)
+      // Mirror the card's install semantics: featured entries report no license
+      // (no warning), search results pass their declared license so an
+      // unlicensed one is confirmed first.
+      const skillName = seed.origin === 'featured' ? undefined : seed.name
+      const license = seed.origin === 'featured' ? undefined : seed.license
+      handleExploreInstall(seed.sourceUrl, skillName, license)
+    },
+    [handleExploreInstall],
+  )
+
   const handleConfirmUnlicensedInstall = useCallback(() => {
     if (!pendingUnlicensedInstall) return
     const { sourceUrl, skillName } = pendingUnlicensedInstall
@@ -3677,6 +3716,7 @@ function App() {
             onExploreFilterChange={handleExploreFilterChange}
             onInstallSkill={handleExploreInstall}
             onOpenManualAdd={handleOpenAdd}
+            onOpenDetail={setExploreDetail}
             t={t}
           />
         )}
@@ -3688,6 +3728,17 @@ function App() {
         skillName={pendingUnlicensedInstall?.skillName}
         onRequestClose={() => setPendingUnlicensedInstall(null)}
         onConfirm={handleConfirmUnlicensedInstall}
+        t={t}
+      />
+
+      <ExploreDetailModal
+        open={Boolean(exploreDetail)}
+        loading={loading}
+        seed={exploreDetail}
+        fetchSubSkills={fetchExploreSubSkills}
+        onInstall={handleExploreDetailInstall}
+        onOpenExternal={handleOpenExternal}
+        onRequestClose={() => setExploreDetail(null)}
         t={t}
       />
 

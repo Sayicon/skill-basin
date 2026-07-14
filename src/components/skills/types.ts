@@ -68,6 +68,18 @@ export type GitSkillCandidate = {
   subpath: string
 }
 
+/** Everything the Explore detail modal knows before it lazy-loads the repo. */
+export type ExploreDetailSeed = {
+  name: string
+  author: string
+  summary: string
+  license?: string | null
+  sourceUrl: string
+  origin: 'featured' | 'skills_sh' | 'github'
+  count: number
+  countIsStars: boolean
+}
+
 export type LocalSkillCandidate = {
   name: string
   description?: string | null
