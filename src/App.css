@@ -4931,6 +4931,12 @@
   padding: 18px 32px 28px;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  /* The pin matrix has one row per installed tool (up to 47), so this panel
+     can outgrow the viewport. Cap it and let it scroll on its own — otherwise
+     it pushes past the detail view's clipped bottom edge and the lower rows
+     become unreachable. */
+  max-height: 42%;
+  overflow-y: auto;
 }
 
 @media (max-width: 860px) {
