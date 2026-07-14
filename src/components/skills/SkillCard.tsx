@@ -325,6 +325,7 @@ const SkillCard = ({
           onClick={() => onUpdate(skill)}
           disabled={loading || !skillEnabled}
           aria-label={t('update')}
+          title={t('update')}
         >
           <RefreshCw size={16} />
         </button>
@@ -344,6 +345,7 @@ const SkillCard = ({
           onClick={() => onDelete(skill.id)}
           disabled={loading}
           aria-label={t('remove')}
+          title={t('remove')}
         >
           <Trash2 size={16} />
         </button>

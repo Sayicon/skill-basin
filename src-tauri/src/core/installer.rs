@@ -1185,6 +1185,7 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
     repo_url: &str,
     subpath: &str,
     name: Option<String>,
+    cancel: Option<&CancelToken>,
 ) -> Result<InstallResult> {
     let parsed = parse_github_url(repo_url);
     let user_provided_name = name.is_some();
@@ -1212,7 +1213,7 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
         store,
         &parsed.clone_url,
         parsed.branch.as_deref(),
-        None,
+        cancel,
     )?;
 
     let copy_src = if subpath == "." {

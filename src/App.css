@@ -750,6 +750,10 @@
 .tool-matrix.collapsed {
   flex-wrap: nowrap;
   overflow: hidden;
+  /* overflow:hidden clips the horizontal overflow (its purpose) but also the
+     1px a pill rises on hover; a hair of top padding gives that lift room so
+     the pill's top edge is not sheared. */
+  padding-top: 2px;
 }
 
 .tool-pill {
@@ -4882,6 +4886,11 @@
   padding: 24px 28px 40px;
   max-width: 1080px;
   margin: 0 auto;
+  /* The parent (.skills-main) clips overflow, so the page must scroll itself
+     or a small window cuts off the "Add a machine" snippet and its copy
+     buttons — same pattern .management-page uses. */
+  height: 100%;
+  overflow-y: auto;
 }
 .fleet-header {
   display: flex;

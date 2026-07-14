@@ -355,6 +355,7 @@ fn lists_and_installs_git_skills_without_network() {
         repo_dir.path().to_string_lossy().as_ref(),
         "skills/a",
         None,
+        None,
     )
     .unwrap();
     assert!(res.central_path.exists());
@@ -502,6 +503,7 @@ fn install_git_skill_uses_skill_md_name_over_subpath_skills() {
         repo_dir.path().to_string_lossy().as_ref(),
         "skills",
         None,
+        None,
     )
     .unwrap();
 
@@ -545,6 +547,7 @@ fn install_git_skill_rejects_container_subpath_without_skill_md() {
         repo_dir.path().to_string_lossy().as_ref(),
         "awesome_agent_skills",
         None,
+        None,
     ) {
         Ok(_) => panic!("expected invalid skill path"),
         Err(e) => e,
@@ -582,6 +585,7 @@ fn install_git_skill_selection_accepts_specific_child_under_container() {
         repo_dir.path().to_string_lossy().as_ref(),
         "awesome_agent_skills/technical-writer",
         None,
+        None,
     )
     .unwrap();
 
@@ -610,6 +614,7 @@ fn install_git_skill_respects_user_provided_name() {
         repo_dir.path().to_string_lossy().as_ref(),
         "skills",
         Some("user-custom-name".to_string()),
+        None,
     )
     .unwrap();
 

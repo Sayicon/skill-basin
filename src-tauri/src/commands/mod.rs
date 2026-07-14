@@ -1558,13 +1558,25 @@ pub async fn list_git_skills_cmd(
 pub async fn install_git_selection(
     app: tauri::AppHandle,
     store: State<'_, SkillStore>,
+    cancel: State<'_, Arc<CancelToken>>,
     repoUrl: String,
     subpath: String,
     name: Option<String>,
 ) -> Result<InstallResultDto, String> {
     let store = store.inner().clone();
+    // Same cancel wiring as install_git: without a token the clone runs to
+    // completion and the skill lands even after the user hits Cancel.
+    cancel.reset();
+    let cancel_token = Arc::clone(cancel.inner());
     tauri::async_runtime::spawn_blocking(move || {
-        let result = install_git_skill_from_selection(&app, &store, &repoUrl, &subpath, name)?;
+        let result = install_git_skill_from_selection(
+            &app,
+            &store,
+            &repoUrl,
+            &subpath,
+            name,
+            Some(&cancel_token),
+        )?;
         Ok::<_, anyhow::Error>(to_install_dto(result))
     })
     .await

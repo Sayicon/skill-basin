@@ -1386,7 +1386,13 @@ function App() {
     [addModalTagIds, invokeTauri, t],
   )
 
+  // A cancel must also stop a multi-select import loop from starting the next
+  // clone: cancelling the backend token aborts the in-flight install, but the
+  // JS loop would otherwise march on to the remaining candidates.
+  const installCancelledRef = useRef(false)
+
   const handleCancelLoading = useCallback(() => {
+    installCancelledRef.current = true
     void invokeTauri('cancel_current_operation').catch(() => {})
     setLoading(false)
     setLoadingStartAt(null)
@@ -2751,9 +2757,11 @@ function App() {
     setLoading(true)
     setLoadingStartAt(Date.now())
     setError(null)
+    installCancelledRef.current = false
     try {
       const collectedErrors: { title: string; message: string }[] = []
       for (let i = 0; i < selected.length; i++) {
+        if (installCancelledRef.current) break
         const candidate = selected[i]
         setActionMessage(
           t('actions.importStep', {
@@ -2822,9 +2830,11 @@ function App() {
     setLoading(true)
     setLoadingStartAt(Date.now())
     setError(null)
+    installCancelledRef.current = false
     try {
       const collectedErrors: { title: string; message: string }[] = []
       for (let i = 0; i < selected.length; i++) {
+        if (installCancelledRef.current) break
         const candidate = selected[i]
         setActionMessage(
           t('actions.importStep', {

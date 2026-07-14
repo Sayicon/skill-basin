@@ -8,6 +8,18 @@ use super::auto_update::{AutoUpdateIntervalUnit, AutoUpdateSchedule, AutoUpdateS
 pub const TASK_LABEL: &str = "com.skillshub.autoupdate";
 const BACKGROUND_TASK_ARGS: [&str; 3] = ["--background-task", "update-skills", "--force"];
 
+/// A `schtasks` command that spawns no console window. Without CREATE_NO_WINDOW
+/// each call flashes a black/white console for a moment — visible whenever the
+/// user touches the schedule UI (create/query/run/delete).
+#[cfg(target_os = "windows")]
+fn schtasks() -> Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut cmd = Command::new("schtasks");
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    cmd
+}
+
 #[derive(Clone, Debug)]
 pub struct SchedulerTaskStatus {
     pub registered: bool,
@@ -411,7 +423,7 @@ fn current_uid() -> Result<u32> {
 
 #[cfg(target_os = "windows")]
 fn install_windows_task(config: &SchedulerConfig) -> Result<()> {
-    let out = Command::new("schtasks")
+    let out = schtasks()
         .args(windows_schtasks_args(config))
         .output()
         .context("schtasks create")?;
@@ -426,7 +438,7 @@ fn install_windows_task(config: &SchedulerConfig) -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn uninstall_windows_task() -> Result<()> {
-    let out = Command::new("schtasks")
+    let out = schtasks()
         .args(["/Delete", "/F", "/TN", TASK_LABEL])
         .output()
         .context("schtasks delete")?;
@@ -441,9 +453,7 @@ fn uninstall_windows_task() -> Result<()> {
 
 #[cfg(target_os = "windows")]
 fn get_windows_task_status() -> SchedulerTaskStatus {
-    let out = Command::new("schtasks")
-        .args(["/Query", "/TN", TASK_LABEL])
-        .output();
+    let out = schtasks().args(["/Query", "/TN", TASK_LABEL]).output();
     match out {
         Ok(out) if out.status.success() => SchedulerTaskStatus {
             registered: true,
@@ -466,7 +476,7 @@ fn trigger_windows_task_now() -> Result<()> {
     if !status.registered {
         anyhow::bail!("auto update task is not ready: {}", status.detail);
     }
-    let out = Command::new("schtasks")
+    let out = schtasks()
         .args(windows_schtasks_run_args())
         .output()
         .context("schtasks run")?;
