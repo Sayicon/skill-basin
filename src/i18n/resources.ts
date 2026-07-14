@@ -20,6 +20,12 @@ export const resources = {
       navTools: 'Tools',
             navManageCenter: 'Manage',
       navFleet: 'Fleet',
+      window: {
+        minimize: 'Minimize',
+        maximize: 'Maximize',
+        restore: 'Restore',
+        close: 'Close',
+      },
       basin: {
         cardTitle: 'Basin',
         cardDesc: 'The git repository that holds every skill, version and pin.',
@@ -703,6 +709,12 @@ export const resources = {
       navTools: 'Araçlar',
             navManageCenter: 'Yönet',
       navFleet: 'Filo',
+      window: {
+        minimize: 'Simge durumuna küçült',
+        maximize: 'Ekranı kapla',
+        restore: 'Önceki boyut',
+        close: 'Kapat',
+      },
       basin: {
         cardTitle: 'Havuz',
         cardDesc: 'Tüm skill, versiyon ve pin’lerin yaşadığı git deposu.',
@@ -1384,6 +1396,12 @@ export const resources = {
       navTools: '工具',
             navManageCenter: '管理中心',
       navFleet: '机群',
+      window: {
+        minimize: '最小化',
+        maximize: '最大化',
+        restore: '还原',
+        close: '关闭',
+      },
       basin: {
         cardTitle: '技能池',
         cardDesc: '保存所有技能、版本与固定的 git 仓库。',

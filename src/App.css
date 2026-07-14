@@ -5105,3 +5105,60 @@
   height: 26px;
   display: block;
 }
+/* ── Custom title bar (header doubles as the drag surface) ─────────────── */
+/* Draggable surfaces show the default arrow, not a text cursor. */
+.skills-header[data-tauri-drag-region],
+.brand-area[data-tauri-drag-region] {
+  cursor: default;
+}
+/* Interactive children must not inherit the drag region — they stay clickable
+   and keep their own pointer. */
+.skills-header button,
+.skills-header a,
+.skills-header .nav-tab,
+.window-controls {
+  -webkit-app-region: no-drag;
+}
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  /* Pull to the very edge so the buttons sit flush in the corner. */
+  margin-right: -12px;
+}
+.win-ctl {
+  width: 38px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.win-ctl:hover {
+  background: var(--bg-element-hover);
+  color: var(--text-primary);
+}
+.win-ctl:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: -2px;
+}
+.win-ctl:active {
+  background: var(--bg-element);
+}
+/* Close is the one destructive control — red on hover, in both themes. */
+.win-ctl-close:hover {
+  background: var(--status-error);
+  color: #ffffff;
+}
+.win-ctl-close:active {
+  filter: brightness(0.92);
+}

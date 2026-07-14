@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Layers, Search, Server, Settings, SlidersHorizontal } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import logoIcon from '../../assets/logo-icon.png'
+import WindowControls from './WindowControls'
 
 type HeaderProps = {
   language: string
@@ -22,9 +23,12 @@ const Header = ({
   t,
 }: HeaderProps) => {
   return (
-    <header className="skills-header">
+    // The header IS the title bar: its empty surface drags the window (Tauri
+    // routes clicks on interactive children — buttons, nav — to them instead),
+    // and a double-click on it toggles maximize, like a native title bar.
+    <header className="skills-header" data-tauri-drag-region>
       <div className="header-left">
-        <div className="brand-area">
+        <div className="brand-area" data-tauri-drag-region>
           <img className="brand-logo" src={logoIcon} alt="" aria-hidden="true" />
           <div className="brand-text-wrap">
             <div className="brand-text">
@@ -74,6 +78,7 @@ const Header = ({
         <button className={`icon-btn${activeView === 'settings' ? ' active' : ''}`} type="button" onClick={onOpenSettings}>
           <Settings size={18} />
         </button>
+        <WindowControls t={t} />
       </div>
     </header>
   )
