@@ -529,6 +529,7 @@ const SkillDetailView = ({
         </div>
       </div>
 
+      <div className="detail-lower">
       <div className="detail-body">
         <div className="detail-file-list">
           <div className="file-list-title">{t('detail.files')}</div>
@@ -600,6 +601,7 @@ const SkillDetailView = ({
         formatRelative={formatRelative}
         t={t}
       />
+      </div>
     </div>
   )
 }

@@ -4469,11 +4469,21 @@
   color: var(--border-strong);
 }
 
+/* The area under the header splits into two columns: the file browser on the
+   left, the versions/pin panel on the right. */
+.detail-lower {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .detail-body {
   flex: 1;
   display: flex;
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
 }
 
 /* ── File tree sidebar ── */
@@ -4924,24 +4934,30 @@
 }
 
 /* ── Skill Detail — versions & pin matrix panel ── */
+/* Right column: Versions on top, Pin matrix below, stacked. The pin matrix has
+   one row per installed tool (up to 47), so the panel scrolls on its own to
+   keep every row reachable. */
 .versions-panel {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
-  gap: 16px;
-  padding: 18px 32px 28px;
-  border-top: 1px solid var(--border-subtle);
+  width: 340px;
   flex-shrink: 0;
-  /* The pin matrix has one row per installed tool (up to 47), so this panel
-     can outgrow the viewport. Cap it and let it scroll on its own — otherwise
-     it pushes past the detail view's clipped bottom edge and the lower rows
-     become unreachable. */
-  max-height: 42%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px 24px 28px;
+  border-left: 1px solid var(--border-subtle);
   overflow-y: auto;
 }
 
+/* Narrow windows: drop back to a stacked layout so neither column is starved. */
 @media (max-width: 860px) {
+  .detail-lower {
+    flex-direction: column;
+  }
   .versions-panel {
-    grid-template-columns: 1fr;
+    width: auto;
+    border-left: none;
+    border-top: 1px solid var(--border-subtle);
+    max-height: 42%;
   }
 }
 
