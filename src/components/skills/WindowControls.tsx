@@ -5,6 +5,10 @@ import type { TFunction } from 'i18next'
 // Present only inside the Tauri webview; in a plain browser (vite dev, the
 // web build) there is no OS window to drive, so the controls hide themselves.
 const IN_TAURI = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
+// macOS keeps its native traffic lights (titleBarStyle: Overlay), so drawing
+// our own controls there would double up and sit on the wrong side.
+const IS_MAC =
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 
 type WindowControlsProps = { t: TFunction }
 
@@ -12,7 +16,7 @@ const WindowControls = ({ t }: WindowControlsProps) => {
   const [maximized, setMaximized] = useState(false)
 
   useEffect(() => {
-    if (!IN_TAURI) return
+    if (!IN_TAURI || IS_MAC) return
     let unlisten: (() => void) | undefined
     let alive = true
     void (async () => {
@@ -39,7 +43,7 @@ const WindowControls = ({ t }: WindowControlsProps) => {
     }
   }, [])
 
-  if (!IN_TAURI) return null
+  if (!IN_TAURI || IS_MAC) return null
 
   const withWindow = (fn: (win: import('@tauri-apps/api/window').Window) => void) => () => {
     void import('@tauri-apps/api/window').then(({ getCurrentWindow }) => fn(getCurrentWindow()))

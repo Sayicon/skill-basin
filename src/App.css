@@ -5111,6 +5111,11 @@
 .brand-area[data-tauri-drag-region] {
   cursor: default;
 }
+/* macOS draws its traffic lights over the top-left; give them room so the
+   logo doesn't sit under them. Its window controls are native, not ours. */
+:root[data-os='macos'] .skills-header {
+  padding-left: 82px;
+}
 /* Interactive children must not inherit the drag region — they stay clickable
    and keep their own pointer. */
 .skills-header button,
