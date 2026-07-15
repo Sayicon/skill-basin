@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-15
+
+### Added
+- **Skill detail redesign**: two-column layout with resizable columns, a
+  scrollable pin matrix, and a cleaner inspector so every pin row stays
+  reachable at any window size.
+- **Explore**: skill detail modal, infinite scroll, and richer source/license
+  filters.
+- **Custom title bar** with theme-aware window controls; native traffic lights
+  are kept on macOS.
+
+### Changed
+- Default window enlarged by 10%.
+
+### Fixed
+- Five reported v0.1.0 issues.
+- Fleet: the agent rebases on a racing push and keeps its own status, and one
+  unhealthy machine can no longer sink the whole fleet's report.
+- Disabling a tool now reaches its pins instead of leaving stale syncs behind.
+- Env-file quote handling, license sentinels, non-object MCP configs, and
+  button contrast.
+
 ## [0.1.0] - 2026-07-11
 
 First SkillBasin release — a fork of skills-hub (versions below 0.1.0 in this

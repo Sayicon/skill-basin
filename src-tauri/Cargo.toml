@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "0.1.1"
 description = "Manage every AI agent's skills from one desktop app"
 authors = ["Kerem Cekici"]
 license = "MIT"
