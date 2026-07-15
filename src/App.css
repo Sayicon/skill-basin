@@ -4934,31 +4934,73 @@
 }
 
 /* ── Skill Detail — versions & pin matrix panel ── */
-/* Right column: Versions on top, Pin matrix below, stacked. The pin matrix has
-   one row per installed tool (up to 47), so the panel scrolls on its own to
-   keep every row reachable. */
-.versions-panel {
-  width: 340px;
+/* Right column wrapper — the drag-set width lives here so the panel inside can
+   simply fill it and scroll. */
+.versions-pane {
   flex-shrink: 0;
+  display: flex;
+  min-height: 0;
+  border-left: 1px solid var(--border-subtle);
+}
+
+/* Versions on top, Pin matrix below, stacked. The pin matrix has one row per
+   installed tool (up to 47), so the panel scrolls on its own to keep every row
+   reachable even before the window is maximized. */
+.versions-panel {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding: 18px 24px 28px;
-  border-left: 1px solid var(--border-subtle);
   overflow-y: auto;
 }
 
-/* Narrow windows: drop back to a stacked layout so neither column is starved. */
-@media (max-width: 860px) {
-  .detail-lower {
-    flex-direction: column;
-  }
-  .versions-panel {
-    width: auto;
-    border-left: none;
-    border-top: 1px solid var(--border-subtle);
-    max-height: 42%;
-  }
+/* Thin, unobtrusive scrollbar for the right column. */
+.versions-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.versions-panel::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+.versions-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+.versions-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Draggable column splitters. A 6px hit area with a hairline that only shows on
+   hover or while dragging. */
+.detail-resizer {
+  flex-shrink: 0;
+  width: 6px;
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+}
+.detail-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0 2px;
+  border-radius: 2px;
+  background: var(--accent-primary);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.detail-resizer:hover::after {
+  opacity: 0.6;
+}
+
+/* Keep the resize cursor and kill text selection across the whole window while
+   a splitter is being dragged. */
+body.resizing-col {
+  cursor: col-resize;
+  user-select: none;
+}
+body.resizing-col .detail-resizer::after {
+  opacity: 0.8;
 }
 
 .versions-box {
@@ -5023,11 +5065,12 @@
 
 .pin-matrix-row {
   /* Fixed columns so arrows and selects line up across rows regardless of
-     how wide each tool chip is. */
+     how wide each tool chip is. The tool chip is kept tight (and ellipsized)
+     so the version select keeps enough width to show its full label. */
   display: grid;
-  grid-template-columns: 140px 16px 1fr 28px;
+  grid-template-columns: 104px 12px minmax(0, 1fr) 26px;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .pin-matrix-row > .chip {

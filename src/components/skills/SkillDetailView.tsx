@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react'
 import {
   ArrowLeft,
   ChevronDown,
@@ -21,6 +28,7 @@ import { toast } from 'sonner'
 import type { TFunction } from 'i18next'
 import type { ManagedSkill, SkillFileEntry, ToolOption } from './types'
 import SkillVersionsPanel from './SkillVersionsPanel'
+import { clampWidth, DETAIL_LAYOUT_LIMITS, detailLayout } from './detailLayout'
 
 // ─── Types ───────────────────────────────────────────
 type SkillDetailViewProps = {
@@ -189,6 +197,7 @@ const FileTreeNode = memo(
             className="tree-item tree-dir"
             style={{ paddingLeft: 12 + depth * 16 }}
             onClick={() => onToggleDir(node.path)}
+            title={node.name}
           >
             <span className="tree-chevron">
               {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -223,6 +232,7 @@ const FileTreeNode = memo(
         className={`tree-item tree-file${activeFile === node.path ? ' active' : ''}`}
         style={{ paddingLeft: 12 + depth * 16 + 18 }}
         onClick={() => onSelectFile(node.path)}
+        title={node.name}
       >
         <File size={14} className="tree-icon tree-icon-file" />
         <span className="tree-name">{node.name}</span>
@@ -289,23 +299,11 @@ function parseFrontmatter(raw: string): {
 const FileContentRenderer = memo(
   ({ filename, content, isDark }: FileContentRendererProps) => {
     if (isMarkdown(filename)) {
-      const { meta, body } = parseFrontmatter(content)
+      // Strip the frontmatter block and render only the body — the metadata
+      // table added noise the inspector doesn't need.
+      const { body } = parseFrontmatter(content)
       return (
         <div className="markdown-body">
-          {meta && (
-            <dl className="frontmatter-meta">
-              {Object.entries(meta).map(([key, value]) => (
-                <div
-                  className="frontmatter-meta-item"
-                  data-key={key}
-                  key={key}
-                >
-                  <dt>{key}</dt>
-                  <dd>{value}</dd>
-                </div>
-              ))}
-            </dl>
-          )}
           <Markdown
             remarkPlugins={[remarkFrontmatter, remarkGfm]}
             components={{
@@ -410,6 +408,8 @@ const SkillDetailView = ({
   const [loadingFiles, setLoadingFiles] = useState(true)
   const [loadingContent, setLoadingContent] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [treeWidth, setTreeWidth] = useState(detailLayout.treeWidth)
+  const [rightWidth, setRightWidth] = useState(detailLayout.rightWidth)
 
   const isDark =
     document.documentElement.getAttribute('data-theme') === 'dark'
@@ -487,6 +487,47 @@ const SkillDetailView = ({
     })
   }, [])
 
+  // Drag a splitter to resize a column. Widths are mirrored into the module
+  // store so they persist while the app runs (the detail view unmounts on
+  // back) and reset to defaults only on restart.
+  const startResize = useCallback(
+    (axis: 'tree' | 'right') => (event: ReactMouseEvent) => {
+      event.preventDefault()
+      const startX = event.clientX
+      const startTree = detailLayout.treeWidth
+      const startRight = detailLayout.rightWidth
+      const onMove = (moveEvent: globalThis.MouseEvent) => {
+        if (axis === 'tree') {
+          const next = clampWidth(
+            startTree + (moveEvent.clientX - startX),
+            DETAIL_LAYOUT_LIMITS.treeWidth.min,
+            DETAIL_LAYOUT_LIMITS.treeWidth.max,
+          )
+          detailLayout.treeWidth = next
+          setTreeWidth(next)
+        } else {
+          // The right column widens as the splitter is dragged left.
+          const next = clampWidth(
+            startRight + (startX - moveEvent.clientX),
+            DETAIL_LAYOUT_LIMITS.rightWidth.min,
+            DETAIL_LAYOUT_LIMITS.rightWidth.max,
+          )
+          detailLayout.rightWidth = next
+          setRightWidth(next)
+        }
+      }
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove)
+        document.removeEventListener('mouseup', onUp)
+        document.body.classList.remove('resizing-col')
+      }
+      document.addEventListener('mousemove', onMove)
+      document.addEventListener('mouseup', onUp)
+      document.body.classList.add('resizing-col')
+    },
+    [],
+  )
+
   const sourceLabel =
     skill.source_type.toLowerCase().includes('git')
       ? skill.source_ref?.replace(/^https?:\/\/(www\.)?github\.com\//, '') ?? ''
@@ -531,7 +572,7 @@ const SkillDetailView = ({
 
       <div className="detail-lower">
       <div className="detail-body">
-        <div className="detail-file-list">
+        <div className="detail-file-list" style={{ width: treeWidth }}>
           <div className="file-list-title">{t('detail.files')}</div>
           {loadingFiles ? (
             <div className="detail-loading">
@@ -556,6 +597,13 @@ const SkillDetailView = ({
             </div>
           )}
         </div>
+
+        <div
+          className="detail-resizer"
+          onMouseDown={startResize('tree')}
+          role="separator"
+          aria-orientation="vertical"
+        />
 
         <div className="detail-file-content">
           {activeFile ? (
@@ -594,13 +642,22 @@ const SkillDetailView = ({
         </div>
       </div>
 
-      <SkillVersionsPanel
-        skillName={skill.name}
-        installedTools={installedTools}
-        invokeTauri={invokeTauri}
-        formatRelative={formatRelative}
-        t={t}
+      <div
+        className="detail-resizer"
+        onMouseDown={startResize('right')}
+        role="separator"
+        aria-orientation="vertical"
       />
+
+      <div className="versions-pane" style={{ width: rightWidth }}>
+        <SkillVersionsPanel
+          skillName={skill.name}
+          installedTools={installedTools}
+          invokeTauri={invokeTauri}
+          formatRelative={formatRelative}
+          t={t}
+        />
+      </div>
       </div>
     </div>
   )
