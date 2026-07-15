@@ -50,11 +50,23 @@ adapters are ranked by evidence rather than counted.
 | Antigravity | `~/.gemini/config/skills` | `.agents/skills` |
 | Hermes | via `skills-mcp` server | — |
 
-**Tier 2 — documented, not verified**: some seventy further adapters, vendored
+**Tier 2 — documented, not verified**: forty-plus further adapters, vendored
 from [vercel-labs/skills](https://github.com/vercel-labs/skills) with the source
 commit recorded on every entry. They are wired up and should work, but nobody has
 confirmed them on a real install. Run one successfully and a pull request moves
 it to Tier 1.
+
+<details>
+<summary>All Tier 2 tools</summary>
+
+Amp · Augment · Clawdbot · Cline · CodeBuddy · CodeWhale · Codex · Command Code ·
+Continue · Copaw · Crush · Droid · Gemini CLI · GitHub Copilot · Goose ·
+iFlow CLI · Junie · Kilo Code · Kimi Code CLI · Kiro CLI · Kode · MCPJam ·
+Mistral Vibe · MoltBot · Mux · Neovate · OpenClaude IDE · OpenClaw · OpenCode ·
+OpenHands · Pi · Pochi · Qoder · QoderWork · Qwen Code · Roo Code · Trae ·
+Trae CN · Windsurf · WorkBuddy · Zencoder · AdaL
+
+</details>
 
 Custom directories cover anything not listed, including agents that load skills
 over MCP rather than from a folder.
