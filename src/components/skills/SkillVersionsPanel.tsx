@@ -6,6 +6,7 @@ import type {
   MachinePinsDto,
   PinSyncResultDto,
   PinTargetDto,
+  PluginOverlapDto,
   SkillVersionDto,
   ToolOption,
 } from './types'
@@ -34,6 +35,7 @@ const SkillVersionsPanel = ({
   const [loading, setLoading] = useState(true)
   const [pendingTool, setPendingTool] = useState<string | null>(null)
   const [exportingVersion, setExportingVersion] = useState<string | null>(null)
+  const [overlapPlugin, setOverlapPlugin] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,6 +51,15 @@ const SkillVersionsPanel = ({
       setPins(null)
     } finally {
       setLoading(false)
+    }
+    // Best-effort, non-blocking: does an enabled Claude Code plugin already
+    // provide this skill? If so, the pin creates a duplicate — flag it.
+    try {
+      const overlaps = await invokeTauri<PluginOverlapDto[]>('claude_plugin_overlaps')
+      const hit = overlaps.find((o) => o.skill === skillName)
+      setOverlapPlugin(hit ? hit.plugin : null)
+    } catch {
+      setOverlapPlugin(null)
     }
   }, [invokeTauri, skillName])
 
@@ -111,6 +122,11 @@ const SkillVersionsPanel = ({
         setPins(result.pins)
         if (!reportSyncFailures(result)) {
           toast.success(t('versions.pinned', { tool, version }))
+        }
+        // A successful sync can still duplicate a plugin-provided skill; surface
+        // that so the overlap doesn't stay silent.
+        for (const entry of result.results) {
+          if (entry.warning) toast.warning(entry.warning, { duration: 12000 })
         }
       } catch (err) {
         toast.error(err instanceof Error ? err.message : t('versions.pinFailed'))
@@ -192,6 +208,11 @@ const SkillVersionsPanel = ({
 
   return (
     <div className="versions-panel">
+      {overlapPlugin ? (
+        <div className="versions-overlap-warning" role="status">
+          {t('versions.pluginOverlap', { plugin: overlapPlugin })}
+        </div>
+      ) : null}
       <div className="versions-box">
         <h5 className="versions-box-title">{t('versions.title')}</h5>
         <ul className="versions-list">

@@ -21,6 +21,7 @@ pub mod network_proxy;
 #[cfg(feature = "desktop")]
 pub mod onboarding;
 pub mod pins;
+pub mod plugin_overlap;
 pub mod secrets;
 pub mod skill_files;
 pub mod skill_store;

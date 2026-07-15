@@ -444,6 +444,7 @@ pub fn apply_plan(basin_dir: &Path, plan: &[PlanAction]) -> Result<Vec<ApplyResu
             tool: tool.clone(),
             ok: outcome.is_ok(),
             error: outcome.err().map(|err| format!("{:#}", err)),
+            warning: None,
         });
     }
     Ok(results)
@@ -457,6 +458,12 @@ pub struct ApplyResult {
     pub ok: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// A non-fatal advisory attached after the sync succeeded — e.g. the synced
+    /// skill duplicates one an enabled Claude Code plugin already provides. The
+    /// core sync never sets this; the desktop command layer decorates it, since
+    /// only there is the Claude Code plugin set knowable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 #[cfg(test)]

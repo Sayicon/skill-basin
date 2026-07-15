@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-15
+
+### Added
+- **Plugin-overlap detection for Claude Code.** When a skill SkillBasin syncs
+  into `~/.claude/skills` is also provided by an enabled Claude Code plugin
+  (e.g. `nextjs` vs the Vercel plugin's `nextjs`), the skill detail now shows a
+  warning naming the plugin, and pinning such a skill to Claude Code surfaces the
+  same advisory — so the duplicate that bloats the skill listing and makes
+  routing ambiguous is no longer silent. Detection is best-effort and read-only:
+  it reads Claude Code's enabled-plugin set and never blocks a sync.
+
 ## [0.1.2] - 2026-07-15
 
 ### Changed

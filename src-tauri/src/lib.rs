@@ -154,6 +154,7 @@ pub fn run() {
             commands::export_skill_version,
             commands::default_export_file_name,
             commands::get_machine_pins,
+            commands::claude_plugin_overlaps,
             commands::fleet_machines,
             commands::basin_status,
             commands::basin_connect,

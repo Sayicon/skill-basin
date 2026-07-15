@@ -916,6 +916,72 @@ pub async fn get_machine_pins(store: State<'_, SkillStore>) -> Result<MachinePin
     .map_err(format_anyhow_error)
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginOverlapDto {
+    pub skill: String,
+    /// The enabled plugin key, e.g. "vercel-plugin@vercel".
+    pub plugin: String,
+}
+
+/// Skills this machine pins to Claude Code that an ENABLED Claude Code plugin
+/// also provides — the duplicates that bloat Claude Code's skill listing and
+/// make routing ambiguous. Read-only, best-effort: an empty list means no
+/// overlap, or that the Claude Code config couldn't be read.
+#[tauri::command]
+pub async fn claude_plugin_overlaps(
+    store: State<'_, SkillStore>,
+) -> Result<Vec<PluginOverlapDto>, String> {
+    let store = store.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let basin_dir = require_basin_dir(&store)?;
+        let config = load_tool_config(&store)?;
+        let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
+        let cc_key = crate::core::tool_adapters::ToolId::ClaudeCode.as_key();
+        let Some(cc_dir) = tool_dirs.get(cc_key) else {
+            return Ok::<_, anyhow::Error>(Vec::new()); // Claude Code disabled/unknown
+        };
+        // SkillBasin-managed skills in Claude Code's skills dir. Two sync
+        // mechanisms leave two different ownership marks: a pin writes a sidecar
+        // manifest, while a tool-target sync materializes an `overlay.yaml`
+        // (with `upstream/`). Either mark means we own the entry, so both are
+        // checked — a skill synced by either path gets its overlap surfaced.
+        let mut managed: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if let Ok(entries) = std::fs::read_dir(cc_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if let Some(manifest) = crate::core::pins::read_managed_manifest(&path) {
+                    managed.insert(manifest.skill);
+                } else if path.join("overlay.yaml").is_file() {
+                    if let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) {
+                        managed.insert(name);
+                    }
+                }
+            }
+        }
+        if managed.is_empty() {
+            return Ok(Vec::new());
+        }
+        let provided = match claude_home() {
+            Some(home) => crate::core::plugin_overlap::enabled_plugin_skills(&home),
+            None => Default::default(),
+        };
+        let mut out: Vec<PluginOverlapDto> = managed
+            .into_iter()
+            .filter_map(|skill| {
+                provided
+                    .get(&skill)
+                    .map(|plugin| PluginOverlapDto { skill, plugin: plugin.clone() })
+            })
+            .collect();
+        out.sort_by(|a, b| a.skill.cmp(&b.skill));
+        Ok(out)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+    .map_err(format_anyhow_error)
+}
+
 /// Pin/unpin response: the updated pin set plus what actually happened on
 /// disk. A pin can be recorded while its sync is refused (e.g. an unmanaged
 /// directory occupies the target) — swallowing `results` made the UI report
@@ -924,6 +990,44 @@ pub async fn get_machine_pins(store: State<'_, SkillStore>) -> Result<MachinePin
 pub struct PinSyncResultDto {
     pub pins: MachinePins,
     pub results: Vec<crate::core::pins::ApplyResult>,
+}
+
+/// The Claude Code config root (`~/.claude`), or None if home can't be resolved.
+fn claude_home() -> Option<std::path::PathBuf> {
+    dirs::home_dir().map(|home| home.join(".claude"))
+}
+
+/// Attach a plugin-overlap advisory to any successful Claude Code sync whose
+/// skill an enabled Claude Code plugin already provides. Best-effort and
+/// desktop-only: if the Claude Code home can't be read, results are unchanged —
+/// this never fails a sync, it only annotates it.
+fn decorate_claude_plugin_overlaps(results: &mut [crate::core::pins::ApplyResult]) {
+    if !results
+        .iter()
+        .any(|r| r.ok && r.tool == crate::core::tool_adapters::ToolId::ClaudeCode.as_key())
+    {
+        return;
+    }
+    let Some(home) = claude_home() else {
+        return;
+    };
+    let plugin_skills = crate::core::plugin_overlap::enabled_plugin_skills(&home);
+    if plugin_skills.is_empty() {
+        return;
+    }
+    let cc_key = crate::core::tool_adapters::ToolId::ClaudeCode.as_key();
+    for result in results.iter_mut() {
+        if result.ok && result.tool == cc_key {
+            if let Some(plugin) = plugin_skills.get(&result.skill) {
+                result.warning = Some(format!(
+                    "The enabled Claude Code plugin '{plugin}' already provides a '{}' skill. \
+                     Both are now loaded, so Claude Code sees the skill twice — disable one \
+                     (the plugin, or this skill for Claude Code) to avoid the duplicate.",
+                    result.skill,
+                ));
+            }
+        }
+    }
 }
 
 fn set_skill_pin_core(
@@ -937,10 +1041,11 @@ fn set_skill_pin_core(
     let machine = current_machine_id(store)?;
     let config = load_tool_config(store)?;
     let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
-    let (pins, results) = set_pin(
+    let (pins, mut results) = set_pin(
         &basin_dir, &machine, skill, version, tool, target, &tool_dirs,
     )?;
     crate::core::basin::basin_commit_all(&basin_dir, &format!("pin {skill}@{version} -> {tool}"))?;
+    decorate_claude_plugin_overlaps(&mut results);
     Ok(PinSyncResultDto { pins, results })
 }
 

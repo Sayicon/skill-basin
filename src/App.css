@@ -5481,3 +5481,15 @@ body.resizing-col .detail-resizer::after {
   justify-content: center;
   color: var(--accent-primary);
 }
+
+/* Plugin-overlap advisory in the skill versions panel: a synced skill that an
+   enabled Claude Code plugin also provides, warned so the duplicate isn't silent. */
+.versions-overlap-warning {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-soft-border);
+  background: var(--warning-soft-bg);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}

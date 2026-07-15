@@ -642,6 +642,8 @@ export const resources = {
         pinFailed: 'Failed to pin',
         unpinFailed: 'Failed to unpin',
         syncRefused: 'Pin saved, but syncing {{tool}} was refused: {{reason}}',
+        pluginOverlap:
+          'The enabled Claude Code plugin {{plugin}} already provides this skill — you have a duplicate. Disable one so Claude Code does not load it twice.',
         behind_one: '{{count}} tool behind',
         behind_other: '{{count}} tools behind',
         behindHint: 'Newest version is {{version}}. Still on an older one: {{tools}}',
@@ -1342,6 +1344,8 @@ export const resources = {
         pinFailed: 'Pinleme başarısız',
         unpinFailed: 'Pin kaldırma başarısız',
         syncRefused: 'Pin kaydedildi ama {{tool}} senkronu reddedildi: {{reason}}',
+        pluginOverlap:
+          'Etkin Claude Code eklentisi {{plugin}} bu skill\'i zaten sağlıyor — bir kopya oluştu. Claude Code iki kez yüklemesin diye birini kapatın.',
         behind_one: '{{count}} araç geride',
         behind_other: '{{count}} araç geride',
         behindHint: 'En yeni versiyon {{version}}. Hâlâ eskisinde: {{tools}}',
@@ -2020,6 +2024,8 @@ export const resources = {
         pinFailed: '固定失败',
         unpinFailed: '取消固定失败',
         syncRefused: '已保存固定，但同步 {{tool}} 被拒绝：{{reason}}',
+        pluginOverlap:
+          '已启用的 Claude Code 插件 {{plugin}} 已提供此技能——存在重复。请禁用其中一个，以免 Claude Code 重复加载。',
         behind_other: '{{count}} 个工具版本落后',
         behindHint: '最新版本是 {{version}}。仍在旧版本：{{tools}}',
         export: '导出为 zip',

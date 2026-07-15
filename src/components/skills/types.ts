@@ -122,11 +122,17 @@ export type PinApplyResultDto = {
   tool: string
   ok: boolean
   error?: string
+  warning?: string
 }
 
 export type PinSyncResultDto = {
   pins: MachinePinsDto
   results: PinApplyResultDto[]
+}
+
+export type PluginOverlapDto = {
+  skill: string
+  plugin: string
 }
 
 export type SkillVersionDto = {
