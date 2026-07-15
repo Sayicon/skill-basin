@@ -4,10 +4,20 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-15
+
 ### Changed
 - Windows updates now install silently (`installMode: quiet`) instead of
   showing an installer window. Takes effect for updates applied *from* a build
   that ships this setting.
+- Backend error messages (git clone/fetch, GitHub download, install) are now in
+  English instead of the upstream's hardcoded Chinese, so failures are legible
+  in the English and Turkish UIs.
+
+### Fixed
+- Fleet: the agent install snippet now points at the agent binary for the
+  running app version instead of a hardcoded `v0.1.0`, which 404'd after any
+  later release.
 
 ## [0.1.1] - 2026-07-15
 

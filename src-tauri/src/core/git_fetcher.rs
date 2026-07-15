@@ -33,7 +33,7 @@ pub fn clone_or_pull(
             Err(err) => {
                 if proxy_url.is_some_and(|v| !v.trim().is_empty()) {
                     anyhow::bail!(
-                        "git 命令执行失败。已配置 GitHub 代理，为确保访问一定走代理，已停止并不回退到内置 git。\n{:#}",
+                        "git command failed. A GitHub proxy is configured, so to guarantee all access goes through the proxy, we stopped instead of falling back to the built-in git.\n{:#}",
                         err
                     );
                 }
@@ -50,7 +50,7 @@ pub fn clone_or_pull(
                 );
                 if !allow_fallback {
                     anyhow::bail!(
-                        "git 命令执行失败（为避免卡死，已停止并不再回退到内置 git）。请检查系统 git/网络/代理；或设置环境变量 SKILLS_HUB_ALLOW_LIBGIT2_FALLBACK=1 允许回退。\n{:#}",
+                        "git command failed (stopped instead of falling back to the built-in git to avoid hanging). Check your system git / network / proxy, or set the environment variable SKILLS_HUB_ALLOW_LIBGIT2_FALLBACK=1 to allow the fallback.\n{:#}",
                         err
                     );
                 }
@@ -381,7 +381,7 @@ fn run_cmd_with_timeout(
         if cancel.is_some_and(|c| c.is_cancelled()) {
             let _ = child.kill();
             let _ = child.wait();
-            anyhow::bail!("CANCELLED|操作已被用户取消。");
+            anyhow::bail!("CANCELLED|Operation cancelled by the user.");
         }
 
         if start.elapsed() > timeout {
@@ -391,7 +391,7 @@ fn run_cmd_with_timeout(
                 .map(|out| String::from_utf8_lossy(&out.stderr).to_string())
                 .unwrap_or_default();
             anyhow::bail!(
-                "git 操作超时（{}s）。请检查网络/代理是否可访问 GitHub；也可设置环境变量 SKILLS_HUB_GIT_TIMEOUT_SECS 增大超时。\n{}",
+                "git operation timed out ({}s). Check whether your network/proxy can reach GitHub, or set the environment variable SKILLS_HUB_GIT_TIMEOUT_SECS to increase the timeout.\n{}",
                 timeout.as_secs(),
                 stderr.trim()
             );

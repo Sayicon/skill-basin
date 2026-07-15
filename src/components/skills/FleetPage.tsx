@@ -33,9 +33,12 @@ type FleetPageProps = {
   t: TFunction
 }
 
-const INSTALL_SNIPPET = `# 1) Get the agent (single binary, from the SkillBasin release page)
+// The agent binary asset is named with the release version (e.g.
+// skillbasin-agent-v0.1.2-Linux-x64), so the /latest/download URL must carry
+// the current version — a hardcoded one 404s the moment a new release ships.
+const buildInstallSnippet = (version: string) => `# 1) Get the agent (single binary, from the SkillBasin release page)
 curl -fsSL -o /usr/local/bin/skillbasin-agent \\
-  https://github.com/Sayicon/skill-basin/releases/latest/download/skillbasin-agent-v0.1.0-Linux-x64
+  https://github.com/Sayicon/skill-basin/releases/latest/download/skillbasin-agent-v${version}-Linux-x64
 chmod +x /usr/local/bin/skillbasin-agent
 
 # 2) Tell it which machine it is and where the basin lives
@@ -68,6 +71,16 @@ const FleetPage = ({ invokeTauri, language, t }: FleetPageProps) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [appVersion, setAppVersion] = useState('')
+
+  useEffect(() => {
+    void import('@tauri-apps/api/app')
+      .then(({ getVersion }) => getVersion())
+      .then(setAppVersion)
+      .catch(() => setAppVersion(''))
+  }, [])
+
+  const installSnippet = buildInstallSnippet(appVersion || '0.0.0')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -179,12 +192,12 @@ const FleetPage = ({ invokeTauri, language, t }: FleetPageProps) => {
       <div className="fleet-onboard">
         <h2>{t('fleet.addMachine')}</h2>
         <p>{t('fleet.addMachineHelp')}</p>
-        <pre className="fleet-snippet mono">{INSTALL_SNIPPET}</pre>
+        <pre className="fleet-snippet mono">{installSnippet}</pre>
         <div className="fleet-onboard-actions">
           <button
             className="fleet-copy-btn"
             type="button"
-            onClick={() => void copyText(INSTALL_SNIPPET, 'fleet.snippetCopied')}
+            onClick={() => void copyText(installSnippet, 'fleet.snippetCopied')}
           >
             <Copy size={14} /> {t('fleet.copySnippet')}
           </button>

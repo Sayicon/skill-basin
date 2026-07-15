@@ -120,7 +120,7 @@ pub fn sync_dir_for_tool_with_overwrite(
     target: &Path,
     overwrite: bool,
 ) -> Result<SyncOutcome> {
-    // Cursor 目前不支持软链/junction：强制使用 copy，避免同步后在 Cursor 内不可用。
+    // Cursor does not currently support symlinks/junctions: force a copy so the skill is usable inside Cursor after sync.
     if tool_key.eq_ignore_ascii_case("cursor") {
         return sync_dir_copy_with_overwrite(source, target, overwrite);
     }

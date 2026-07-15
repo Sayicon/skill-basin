@@ -67,7 +67,7 @@ fn download_dir_recursive(
     token: Option<&str>,
 ) -> Result<()> {
     if cancel.is_some_and(|c| c.is_cancelled()) {
-        anyhow::bail!("CANCELLED|操作已被用户取消。");
+        anyhow::bail!("CANCELLED|Operation cancelled by the user.");
     }
 
     let url = format!(
@@ -93,7 +93,7 @@ fn download_dir_recursive(
 
     for item in items {
         if cancel.is_some_and(|c| c.is_cancelled()) {
-            anyhow::bail!("CANCELLED|操作已被用户取消。");
+            anyhow::bail!("CANCELLED|Operation cancelled by the user.");
         }
 
         let local_path = dest.join(&item.name);

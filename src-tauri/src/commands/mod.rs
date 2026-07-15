@@ -82,7 +82,7 @@ fn format_anyhow_error(err: anyhow::Error) -> String {
     if let Some(head) = full.lines().next() {
         if head.starts_with("clone ") {
             if let Some(pos) = head.find(" into ") {
-                let head_redacted = format!("{} (已省略临时目录)", &head[..pos]);
+                let head_redacted = format!("{} (temp directory omitted)", &head[..pos]);
                 let rest: String = full.lines().skip(1).collect::<Vec<_>>().join("\n");
                 full = if rest.is_empty() {
                     head_redacted
@@ -102,7 +102,7 @@ fn format_anyhow_error(err: anyhow::Error) -> String {
     {
         if lower.contains("securetransport") {
             return format!(
-        "无法从 GitHub 拉取仓库：TLS/证书校验失败（macOS SecureTransport）。\n\n建议：\n- 检查网络/代理是否拦截 HTTPS\n- 如在公司网络，可能需要安装公司根证书或使用可信代理\n- 也可在终端确认 `git clone {}` 是否可用\n\n详细：{}",
+        "Could not clone the repository from GitHub: TLS/certificate verification failed (macOS SecureTransport).\n\nSuggestions:\n- Check whether your network/proxy is intercepting HTTPS\n- On a corporate network you may need to install the company root certificate or use a trusted proxy\n- You can also confirm in a terminal whether `git clone {}` works\n\nDetails: {}",
         "https://github.com/<owner>/<repo>",
         root
       );
@@ -111,23 +111,23 @@ fn format_anyhow_error(err: anyhow::Error) -> String {
             || lower.contains("permission denied")
             || lower.contains("credentials")
         {
-            "无法访问该仓库：可能是私有仓库/权限不足/需要鉴权。"
+            "Cannot access this repository: it may be private, you may lack permission, or authentication is required."
         } else if lower.contains("not found") {
-            "仓库不存在或无权限访问（GitHub 返回 not found）。"
+            "The repository does not exist or you lack access (GitHub returned not found)."
         } else if lower.contains("failed to resolve")
             || lower.contains("could not resolve")
             || lower.contains("dns")
         {
-            "无法解析 GitHub 域名（DNS）。请检查网络/代理。"
+            "Could not resolve the GitHub domain (DNS). Check your network/proxy."
         } else if lower.contains("timed out") || lower.contains("timeout") {
-            "连接 GitHub 超时。请检查网络/代理。"
+            "Connection to GitHub timed out. Check your network/proxy."
         } else if lower.contains("connection refused") || lower.contains("connection reset") {
-            "连接 GitHub 失败（连接被拒绝/重置）。请检查网络/代理。"
+            "Connection to GitHub failed (connection refused/reset). Check your network/proxy."
         } else {
-            "无法从 GitHub 拉取仓库。请检查网络/代理，或稍后重试。"
+            "Could not clone the repository from GitHub. Check your network/proxy, or try again later."
         };
 
-        return format!("{}\n\n详细：{}", hint, root);
+        return format!("{}\n\nDetails: {}", hint, root);
     }
 
     full

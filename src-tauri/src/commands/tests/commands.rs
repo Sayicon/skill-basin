@@ -18,7 +18,7 @@ fn format_anyhow_error_passthrough_prefixes() {
 fn format_anyhow_error_redacts_clone_temp_path() {
     let err = anyhow::anyhow!("clone https://example.com/a/b into /tmp/skills-hub-git-123");
     let msg = format_anyhow_error(err);
-    assert!(msg.contains("已省略临时目录"));
+    assert!(msg.contains("temp directory omitted"));
     assert!(!msg.contains("/tmp/skills-hub-git-123"));
 }
 
@@ -26,7 +26,7 @@ fn format_anyhow_error_redacts_clone_temp_path() {
 fn format_anyhow_error_github_hint_auth() {
     let err = anyhow::anyhow!("git clone https://github.com/a/b failed: authentication failed");
     let msg = format_anyhow_error(err);
-    assert!(msg.contains("无法访问该仓库"));
+    assert!(msg.contains("Cannot access this repository"));
 }
 
 #[test]

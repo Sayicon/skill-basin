@@ -223,7 +223,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
                         }
                         if err_msg.contains("404") || err_msg.contains("Not Found") {
                             anyhow::bail!(
-                                "该 Skill 在 GitHub 上未找到（可能已被删除或路径已变更）。\n请检查链接是否正确：{}/tree/{}/{}",
+                                "This skill was not found on GitHub (it may have been deleted or the path may have changed).\nCheck that the link is correct: {}/tree/{}/{}",
                                 parsed.clone_url.trim_end_matches(".git"),
                                 branch,
                                 subpath
@@ -233,17 +233,17 @@ pub fn install_git_skill<R: tauri::Runtime>(
                             let mins: i64 = rest.trim().parse().unwrap_or(0);
                             if mins > 0 {
                                 anyhow::bail!(
-                                    "GitHub API 频率限制已触发，约 {} 分钟后重置。可在设置中配置 GitHub Token 以提升限额。",
+                                    "GitHub API rate limit reached; it resets in about {} minutes. Configure a GitHub token in Settings to raise the limit.",
                                     mins
                                 );
                             }
                             anyhow::bail!(
-                                "GitHub API 频率限制已触发。可在设置中配置 GitHub Token 以提升限额。"
+                                "GitHub API rate limit reached. Configure a GitHub token in Settings to raise the limit."
                             );
                         }
                         if err_msg.contains("403") || err_msg.contains("Forbidden") {
                             anyhow::bail!(
-                                "GitHub API 访问被拒绝（可能触发了频率限制）。请稍后再试。"
+                                "GitHub API access was denied (a rate limit may have been triggered). Please try again later."
                             );
                         }
                         return Err(err);
@@ -273,7 +273,7 @@ pub fn install_git_skill<R: tauri::Runtime>(
             let skill_count = count_skills_in_repo(&repo_dir);
             if skill_count >= 2 {
                 anyhow::bail!(
-                    "MULTI_SKILLS|该仓库包含多个 Skills，请复制具体 Skill 文件夹链接（例如 GitHub 的 /tree/<branch>/<skill-folder>），再导入。"
+                    "MULTI_SKILLS|This repository contains multiple skills. Copy the link to a specific skill folder (for example GitHub's /tree/<branch>/<skill-folder>) and import that."
                 );
             }
             ensure_installable_skill_dir(&repo_dir)?;
@@ -518,7 +518,7 @@ fn ensure_installable_skill_dir(p: &Path) -> Result<()> {
         Ok(())
     } else {
         anyhow::bail!(
-            "SKILL_INVALID|missing_skill_md|该路径不是有效 Skill 目录：未找到 SKILL.md。请粘贴具体 Skill 文件夹链接。"
+            "SKILL_INVALID|missing_skill_md|This path is not a valid skill directory: no SKILL.md found. Paste the link to a specific skill folder."
         );
     }
 }
@@ -836,7 +836,7 @@ pub fn update_managed_skill_from_source<R: tauri::Runtime>(
     store.upsert_skill(&updated)?;
 
     // If any targets are "copy", re-sync them so changes propagate. Symlinks update automatically.
-    // Cursor 目前不支持软链/junction，因此无论历史 mode 如何，都需要强制 copy 回灌。
+    // Cursor does not currently support symlinks/junctions, so regardless of the historical mode we must force a copy.
     let targets = store.list_skill_targets(skill_id)?;
     let mut updated_targets: Vec<String> = Vec::new();
     for t in targets {
