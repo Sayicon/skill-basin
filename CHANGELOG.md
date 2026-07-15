@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Windows updates now install silently (`installMode: quiet`) instead of
+  showing an installer window. Takes effect for updates applied *from* a build
+  that ships this setting.
+
 ## [0.1.1] - 2026-07-15
 
 ### Added

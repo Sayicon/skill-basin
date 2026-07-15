@@ -45,7 +45,10 @@
       "endpoints": [
         "https://github.com/Sayicon/skill-basin/releases/latest/download/updater.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ4Qzk0QzY0NTc4OEMxNEIKUldSTHdZaFhaRXpKU0Y1NEJaemNMZDRiTVhDZkxSVnZVdCsrSzRlbGhGTnF1T0xJTE8yQzB0WW4K"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ4Qzk0QzY0NTc4OEMxNEIKUldSTHdZaFhaRXpKU0Y1NEJaemNMZDRiTVhDZkxSVnZVdCsrSzRlbGhGTnF1T0xJTE8yQzB0WW4K",
+      "windows": {
+        "installMode": "quiet"
+      }
     }
   }
 }
