@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-20
+
+### Fixed
+- **A duplicate name is now something you can resolve, not a dead end.** 0.1.4
+  started refusing an install whose name a live skill already held, but only
+  said so — leaving no way forward from the screen you were on. The refusal now
+  offers the choices that were missing: update the skill you already have, or
+  install this one under a different name.
+- **Disabled skills no longer reserve their names.** The rule was always "only
+  two *enabled* skills conflict", but the interface checked every skill
+  including disabled ones, so a name you had disabled long ago stayed
+  permanently unusable.
+- **One taken name no longer cancels a whole import.** Selecting ten skills and
+  finding one name taken abandoned all ten before anything was installed. The
+  ones that can be installed now are, and the collisions are resolved
+  afterwards.
+
 ## [0.1.4] - 2026-07-20
 
 ### Fixed
