@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Manifest for Windows TEST binaries only.
+
+  tauri-build embeds an application manifest via `cargo:rustc-link-arg-bins`,
+  which covers `app.exe` but NOT the `cargo test` harness. Without a manifest
+  Windows resolves comctl32.dll to the v5.82 copy in system32, which does not
+  export TaskDialogIndirect / SetWindowSubclass / RemoveWindowSubclass /
+  DefSubclassProc — symbols the Tauri desktop code imports. The test binary
+  then fails to start at all with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139)
+  before a single test runs.
+
+  Declaring the Common-Controls v6 dependency here makes the loader bind to
+  the v6 side-by-side assembly, exactly as the real app does.
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
