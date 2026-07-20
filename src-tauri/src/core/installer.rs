@@ -33,6 +33,49 @@ pub struct InstallResult {
 /// at least one version to pin/show) and on update (new content = new
 /// version, existing pins untouched). Best effort: a basin problem must
 /// never fail the install/update itself.
+/// Refuse a name an ENABLED skill already holds.
+///
+/// A skill's name IS its sync identity (`<tool dir>/<name>`), so two enabled
+/// skills sharing one fight over the same directory on every sync — which is
+/// how silent duplicates appeared in the first place. Disabled skills are
+/// exempt by design: a library that already contains disabled duplicates has
+/// to keep working untouched, with no migration.
+///
+/// The error carries the existing skill so the UI can offer "update it" or
+/// "pick another name" instead of dead-ending the user.
+/// First free directory under the central repo for `name`: `name`, then
+/// `name-2`, `name-3`, ...
+///
+/// The central path is derived from the name, so a disabled duplicate's leftover
+/// directory would otherwise keep its name reserved forever — defeating the
+/// "disabled skills don't hold a name" rule. Suffixing sidesteps that without
+/// ever overwriting what is already on disk, managed or not.
+fn free_central_path(central_dir: &Path, name: &str) -> Result<PathBuf> {
+    let first = central_dir.join(name);
+    if !first.exists() {
+        return Ok(first);
+    }
+    for n in 2..1000 {
+        let candidate = central_dir.join(format!("{name}-{n}"));
+        if !candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+    anyhow::bail!("could not find a free directory for {name:?} in {central_dir:?}")
+}
+
+pub(crate) fn ensure_name_available(store: &SkillStore, name: &str) -> Result<()> {
+    if let Some(existing) = store.active_name_holder(name, None)? {
+        anyhow::bail!(
+            "NAME_TAKEN|{}|{}|{}",
+            existing.id,
+            existing.name,
+            existing.central_path
+        );
+    }
+    Ok(())
+}
+
 fn snapshot_into_basin_if_configured(store: &SkillStore, name: &str, central_path: &Path) {
     let Ok(Some(basin_path)) = store.get_setting("basin_path") else {
         return;
@@ -72,13 +115,15 @@ pub fn install_local_skill<R: tauri::Runtime>(
             .unwrap_or_else(|| "unnamed-skill".to_string())
     });
 
+    // Before touching the filesystem: the name must not already be live.
+    ensure_name_available(store, &name)?;
+
     let central_dir = resolve_central_repo_path(app, store)?;
     ensure_central_repo(&central_dir)?;
-    let central_path = central_dir.join(&name);
-
-    if central_path.exists() {
-        anyhow::bail!("skill already exists in central repo: {:?}", central_path);
-    }
+    // The name is free (checked above); the DIRECTORY may still be occupied by a
+    // disabled duplicate's leftovers, so take the next free one rather than
+    // refusing or overwriting.
+    let central_path = free_central_path(&central_dir, &name)?;
 
     copy_dir_recursive(source_path, &central_path)
         .with_context(|| format!("copy {:?} -> {:?}", source_path, central_path))?;
@@ -140,6 +185,8 @@ pub fn install_git_skill<R: tauri::Runtime>(
             derive_name_from_repo_url(&parsed.clone_url)
         }
     });
+
+    ensure_name_available(store, &name)?;
 
     let central_dir = resolve_central_repo_path(app, store)?;
     ensure_central_repo(&central_dir)?;
@@ -1200,6 +1247,8 @@ pub fn install_git_skill_from_selection<R: tauri::Runtime>(
                 .unwrap_or_else(|| derive_name_from_repo_url(&parsed.clone_url))
         }
     });
+
+    ensure_name_available(store, &display_name)?;
 
     let central_dir = resolve_central_repo_path(app, store)?;
     ensure_central_repo(&central_dir)?;

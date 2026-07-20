@@ -143,7 +143,7 @@ fn download_dir_recursive(
 }
 
 /// Check a GitHub API response for rate-limit errors and surface a helpful message.
-fn check_github_response(
+pub(crate) fn check_github_response(
     resp: reqwest::blocking::Response,
     context: &str,
 ) -> Result<reqwest::blocking::Response> {

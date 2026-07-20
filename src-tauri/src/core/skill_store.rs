@@ -365,6 +365,60 @@ impl SkillStore {
         })
     }
 
+    /// The ENABLED skill already holding `name`, if any — the single source of
+    /// truth for the name-uniqueness rule.
+    ///
+    /// A skill's name IS its sync identity (`<tool dir>/<name>`), but the
+    /// `skills` table deliberately does not make it UNIQUE: disabled duplicates
+    /// have to be allowed to sit side by side, so the rule can only be "no two
+    /// ENABLED skills share a name" and has to live here rather than in the
+    /// schema.
+    ///
+    /// Comparison is case-insensitive because Windows and macOS filesystems are:
+    /// `NextJS` and `nextjs` are distinct rows but the same directory on disk,
+    /// so a case-sensitive rule would pass and then collide during sync.
+    ///
+    /// `exclude_id` skips one skill — used when re-enabling, where the skill
+    /// being checked must not count as its own conflict.
+    pub fn active_name_holder(
+        &self,
+        name: &str,
+        exclude_id: Option<&str>,
+    ) -> Result<Option<SkillRecord>> {
+        let exclude = exclude_id.unwrap_or("");
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare(
+        "SELECT id, name, description, source_type, source_ref, source_subpath, source_revision, central_path, content_hash,
+                created_at, updated_at, last_sync_at, last_seen_at, enabled, status
+         FROM skills
+         WHERE name = ?1 COLLATE NOCASE AND enabled = 1 AND id <> ?2
+         LIMIT 1",
+      )?;
+            let mut rows = stmt.query(params![name, exclude])?;
+            if let Some(row) = rows.next()? {
+                Ok(Some(SkillRecord {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    source_type: row.get(3)?,
+                    source_ref: row.get(4)?,
+                    source_subpath: row.get(5)?,
+                    source_revision: row.get(6)?,
+                    central_path: row.get(7)?,
+                    content_hash: row.get(8)?,
+                    created_at: row.get(9)?,
+                    updated_at: row.get(10)?,
+                    last_sync_at: row.get(11)?,
+                    last_seen_at: row.get(12)?,
+                    enabled: row.get::<_, i32>(13)? != 0,
+                    status: row.get(14)?,
+                }))
+            } else {
+                Ok(None)
+            }
+        })
+    }
+
     pub fn update_skill_description(
         &self,
         skill_id: &str,

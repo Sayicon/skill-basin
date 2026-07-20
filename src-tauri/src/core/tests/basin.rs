@@ -270,6 +270,106 @@ fn basin_commit_all_commits_changes_and_skips_clean_tree() {
 }
 
 #[test]
+fn basin_commit_all_stages_deletions() {
+    // A QA pass claimed add_all(DEFAULT) cannot stage deletions, which would
+    // mean a deleted skill silently stays in the basin forever. libgit2's docs
+    // say the opposite. Settle it behaviourally rather than by reading docs.
+    let basin = tempfile::tempdir().unwrap();
+    basin_init(basin.path(), "b", "2026-07-08").unwrap();
+    let src = tempfile::tempdir().unwrap();
+    fs::write(src.path().join("SKILL.md"), "x").unwrap();
+    add_skill_version(
+        basin.path(),
+        "demo",
+        src.path(),
+        "1.0.0",
+        "2026-07-08",
+        None,
+    )
+    .unwrap();
+    basin_commit_all(basin.path(), "add demo").unwrap();
+
+    let version_path = version_dir(basin.path(), "demo", "1.0.0");
+    let tracked = version_path
+        .join("SKILL.md")
+        .strip_prefix(basin.path())
+        .unwrap()
+        .to_string_lossy()
+        .replace('\\', "/");
+
+    let repo = git2::Repository::open(basin.path()).unwrap();
+    let before = repo
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .tree()
+        .unwrap();
+    assert!(
+        before.get_path(std::path::Path::new(&tracked)).is_ok(),
+        "file should be committed before deletion"
+    );
+
+    fs::remove_dir_all(&version_path).unwrap();
+    let commit = basin_commit_all(basin.path(), "remove demo 1.0.0").unwrap();
+    assert!(commit.is_some(), "a deletion must produce a commit");
+
+    let after = repo
+        .head()
+        .unwrap()
+        .peel_to_commit()
+        .unwrap()
+        .tree()
+        .unwrap();
+    assert!(
+        after.get_path(std::path::Path::new(&tracked)).is_err(),
+        "deleted file must not survive in the committed tree"
+    );
+}
+
+#[test]
+fn basin_pull_preserves_unpushed_local_commits() {
+    // The fleet agent commits its status report and pushes after. When that
+    // push fails (offline, rejected) the commit sits unpushed — and the next
+    // run pulls first. A reset --hard pull would erase it permanently.
+    let remote = tempfile::tempdir().unwrap();
+    let mut opts = git2::RepositoryInitOptions::new();
+    opts.bare(true).initial_head("main");
+    git2::Repository::init_opts(remote.path(), &opts).unwrap();
+    let remote_url = remote.path().to_string_lossy().replace('\\', "/");
+
+    let a = tempfile::tempdir().unwrap();
+    let a_dir = a.path().join("basin");
+    basin_init(&a_dir, "b", "2026-07-08").unwrap();
+    let src = tempfile::tempdir().unwrap();
+    fs::write(src.path().join("SKILL.md"), "hello").unwrap();
+    add_skill_version(&a_dir, "demo", src.path(), "1.0.0", "2026-07-08", None).unwrap();
+    basin_commit_all(&a_dir, "add demo").unwrap();
+    {
+        let repo = git2::Repository::open(&a_dir).unwrap();
+        repo.remote("origin", &remote_url).unwrap();
+    }
+    basin_push(&a_dir).unwrap();
+
+    // Machine B clones, then commits something WITHOUT pushing it.
+    let b = tempfile::tempdir().unwrap();
+    let b_dir = b.path().join("basin");
+    basin_clone_or_pull(&remote_url, &b_dir).unwrap();
+    let status_dir = b_dir.join("machines").join("vps");
+    fs::create_dir_all(&status_dir).unwrap();
+    fs::write(status_dir.join("status.json"), "{\"ok\":true}").unwrap();
+    let local = basin_commit_all(&b_dir, "status: vps apply").unwrap();
+    assert!(local.is_some());
+
+    // Pulling must NOT discard it.
+    basin_clone_or_pull(&remote_url, &b_dir).unwrap();
+    assert!(
+        status_dir.join("status.json").exists(),
+        "unpushed local commit was destroyed by pull"
+    );
+}
+
+#[test]
 fn basin_round_trips_through_a_remote() {
     // Local bare repo stands in for GitHub — full clone/push/pull loop offline.
     let remote = tempfile::tempdir().unwrap();

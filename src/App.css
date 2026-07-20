@@ -1,3 +1,31 @@
+/* Scrollbars — one thin, unobtrusive style everywhere.
+   Global rather than per-container on purpose: there are 20+ scrollable panels
+   and any new one should inherit this without anyone having to remember it.
+
+   Webkit pseudo-elements only, no `scrollbar-width`/`scrollbar-color`: in
+   Chromium (which is what WebView2 runs) setting the standard properties makes
+   it IGNORE these pseudo-elements entirely and fall back to its own thin
+   scrollbar, which is wider and differently coloured. */
+::-webkit-scrollbar {
+  width: 6px;
+  /* Horizontal too — code blocks and the fleet snippet scroll sideways. */
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+/* The square where a horizontal and a vertical bar meet. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .skills-app {
   height: 100%;
   background: var(--bg-app);
@@ -4956,20 +4984,8 @@
   overflow-y: auto;
 }
 
-/* Thin, unobtrusive scrollbar for the right column. */
-.versions-panel::-webkit-scrollbar {
-  width: 6px;
-}
-.versions-panel::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
-}
-.versions-panel::-webkit-scrollbar-thumb:hover {
-  background: var(--text-tertiary);
-}
-.versions-panel::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* Scrollbar styling for this panel now comes from the global rule at the top
+   of this file — it used to be defined only here. */
 
 /* Draggable column splitters. A 6px hit area with a hairline that only shows on
    hover or while dragging. */
@@ -5338,6 +5354,8 @@ body.resizing-col .detail-resizer::after {
 }
 .basin-chip.ok { border-color: var(--success-soft-border); background: var(--success-soft-bg); color: var(--status-success); }
 .basin-chip.err { border-color: var(--danger-soft-border); background: var(--danger-soft-bg); color: var(--status-error); }
+/* Keychain unreachable: not an error the user caused, not a healthy state either. */
+.basin-chip.warn { border-color: var(--warning-soft-border); background: var(--warning-soft-bg); color: var(--status-warning); }
 .basin-chip.clickable { cursor: pointer; }
 .basin-chip.clickable:hover { filter: brightness(1.12); }
 .basin-broken-detail {

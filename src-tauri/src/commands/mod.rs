@@ -767,15 +767,22 @@ fn secrets_status_impl(
     let basin_dir = require_basin_dir(store)?;
     let mut names: Vec<String> = Vec::new();
     let mcp_dir = basin_dir.join("mcp");
-    if let Ok(entries) = std::fs::read_dir(&mcp_dir) {
-        for entry in entries.flatten() {
-            if entry.path().extension().is_some_and(|e| e == "json") {
-                if let Ok(text) = std::fs::read_to_string(entry.path()) {
-                    for name in crate::core::secrets::extract_secret_refs(&text) {
-                        if !names.contains(&name) {
-                            names.push(name);
-                        }
-                    }
+    // Recursive: a flat read_dir missed every nested config (mcp/<tool>/x.json
+    // is the natural way to organise these), so their secrets never showed up
+    // in the missing-secrets report — the one place that is supposed to tell
+    // the user what this machine cannot satisfy.
+    for entry in walkdir::WalkDir::new(&mcp_dir)
+        .follow_links(false)
+        .into_iter()
+        .flatten()
+    {
+        if !entry.file_type().is_file() || !entry.path().extension().is_some_and(|e| e == "json") {
+            continue;
+        }
+        if let Ok(text) = std::fs::read_to_string(entry.path()) {
+            for name in crate::core::secrets::extract_secret_refs(&text) {
+                if !names.contains(&name) {
+                    names.push(name);
                 }
             }
         }
@@ -789,6 +796,9 @@ fn secrets_status_impl(
             let state = match resolution.sources.get(&name) {
                 Some(crate::core::secrets::SecretSource::Keychain) => "keychain",
                 Some(crate::core::secrets::SecretSource::EnvFile) => "envFile",
+                // "could not ask the keychain" is not "not stored": telling
+                // the user to re-enter a secret they already have is wrong.
+                None if resolution.unavailable.contains_key(&name) => "unavailable",
                 None => "missing",
             };
             SecretStatusDto {
@@ -969,9 +979,10 @@ pub async fn claude_plugin_overlaps(
         let mut out: Vec<PluginOverlapDto> = managed
             .into_iter()
             .filter_map(|skill| {
-                provided
-                    .get(&skill)
-                    .map(|plugin| PluginOverlapDto { skill, plugin: plugin.clone() })
+                provided.get(&skill).map(|plugin| PluginOverlapDto {
+                    skill,
+                    plugin: plugin.clone(),
+                })
             })
             .collect();
         out.sort_by(|a, b| a.skill.cmp(&b.skill));
@@ -990,6 +1001,43 @@ pub async fn claude_plugin_overlaps(
 pub struct PinSyncResultDto {
     pub pins: MachinePins,
     pub results: Vec<crate::core::pins::ApplyResult>,
+    /// Set when the pin took effect on disk but recording or publishing it to
+    /// the basin did not fully succeed. Never an error: the operation itself
+    /// worked, and the user needs to know the fleet won't see it yet.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub basin_warning: Option<String>,
+}
+
+/// Commit the basin and publish it to `origin`, folding failures into a
+/// warning rather than an error.
+///
+/// By the time this runs, pins.json is already written and already applied to
+/// the tool directories. Propagating a commit/push failure with `?` would
+/// report "pinning failed" for a pin that in fact took effect — leaving the
+/// user with a change they were told did not happen. The failure is still
+/// real and must be surfaced, but as a warning on a succeeded operation.
+///
+/// Pushing matters as much as committing: a pin that is only committed
+/// locally never reaches the basin remote, so a fleet agent on another
+/// machine will never apply it. Without this the remote-pin path was
+/// silently a no-op.
+fn publish_basin_change(basin_dir: &std::path::Path, message: &str) -> Option<String> {
+    if let Err(err) = crate::core::basin::basin_commit_all(basin_dir, message) {
+        return Some(format!(
+            "Applied on this machine, but recording it in the basin failed: {err:#}"
+        ));
+    }
+    // A local-only basin (single machine, no fleet) is a valid setup and must
+    // not warn on every change.
+    if !crate::core::basin::basin_has_remote(basin_dir) {
+        return None;
+    }
+    if let Err(err) = crate::core::basin::basin_push_with_rebase(basin_dir) {
+        return Some(format!(
+            "Saved locally, but publishing to the basin remote failed: {err:#}. Other machines will not see this change until the basin is pushed."
+        ));
+    }
+    None
 }
 
 /// The Claude Code config root (`~/.claude`), or None if home can't be resolved.
@@ -1001,6 +1049,32 @@ fn claude_home() -> Option<std::path::PathBuf> {
 /// skill an enabled Claude Code plugin already provides. Best-effort and
 /// desktop-only: if the Claude Code home can't be read, results are unchanged —
 /// this never fails a sync, it only annotates it.
+/// The one wording for "this skill is provided twice", so the pin path and
+/// the sync path can never describe the same situation differently.
+fn plugin_overlap_message(plugin: &str, skill: &str) -> String {
+    format!(
+        "The enabled Claude Code plugin '{plugin}' already provides a '{skill}' skill. \
+         Both are now loaded, so Claude Code sees the skill twice — disable one \
+         (the plugin, or this skill for Claude Code) to avoid the duplicate."
+    )
+}
+
+/// Overlap warning for a single skill just synced to `tool`.
+///
+/// The pin path had this check but `sync_skill_to_tool` — the path almost
+/// every skill actually takes, since overlay/target syncs never write a pin —
+/// did not, so the duplicate stayed silent exactly where it was most likely.
+fn claude_plugin_overlap_warning(tool: &str, skill: &str) -> Option<String> {
+    if tool != crate::core::tool_adapters::ToolId::ClaudeCode.as_key() {
+        return None;
+    }
+    let home = claude_home()?;
+    let plugin = crate::core::plugin_overlap::enabled_plugin_skills(&home)
+        .get(skill)?
+        .clone();
+    Some(plugin_overlap_message(&plugin, skill))
+}
+
 fn decorate_claude_plugin_overlaps(results: &mut [crate::core::pins::ApplyResult]) {
     if !results
         .iter()
@@ -1019,12 +1093,7 @@ fn decorate_claude_plugin_overlaps(results: &mut [crate::core::pins::ApplyResult
     for result in results.iter_mut() {
         if result.ok && result.tool == cc_key {
             if let Some(plugin) = plugin_skills.get(&result.skill) {
-                result.warning = Some(format!(
-                    "The enabled Claude Code plugin '{plugin}' already provides a '{}' skill. \
-                     Both are now loaded, so Claude Code sees the skill twice — disable one \
-                     (the plugin, or this skill for Claude Code) to avoid the duplicate.",
-                    result.skill,
-                ));
+                result.warning = Some(plugin_overlap_message(plugin, &result.skill));
             }
         }
     }
@@ -1044,9 +1113,14 @@ fn set_skill_pin_core(
     let (pins, mut results) = set_pin(
         &basin_dir, &machine, skill, version, tool, target, &tool_dirs,
     )?;
-    crate::core::basin::basin_commit_all(&basin_dir, &format!("pin {skill}@{version} -> {tool}"))?;
+    let basin_warning =
+        publish_basin_change(&basin_dir, &format!("pin {skill}@{version} -> {tool}"));
     decorate_claude_plugin_overlaps(&mut results);
-    Ok(PinSyncResultDto { pins, results })
+    Ok(PinSyncResultDto {
+        pins,
+        results,
+        basin_warning,
+    })
 }
 
 /// Pins `tool` to `skill`@`version` — moves it off whatever version of the
@@ -1078,8 +1152,12 @@ fn unset_skill_pin_core(
     let config = load_tool_config(store)?;
     let tool_dirs = resolved_tool_dirs(&basin_dir, &config)?;
     let (pins, results) = unset_pin(&basin_dir, &machine, skill, tool, &tool_dirs)?;
-    crate::core::basin::basin_commit_all(&basin_dir, &format!("unpin {skill} -> {tool}"))?;
-    Ok(PinSyncResultDto { pins, results })
+    let basin_warning = publish_basin_change(&basin_dir, &format!("unpin {skill} -> {tool}"));
+    Ok(PinSyncResultDto {
+        pins,
+        results,
+        basin_warning,
+    })
 }
 
 /// Removes `tool`'s pin for `skill` (whichever version) and syncs — the
@@ -1534,34 +1612,73 @@ pub async fn set_central_repo_path(
             return Ok::<_, anyhow::Error>(new_base.to_string_lossy().to_string());
         }
 
-        if !skills.is_empty() {
-            for skill in skills {
-                let old_path = std::path::PathBuf::from(&skill.central_path);
-                if !old_path.exists() {
-                    anyhow::bail!("central path not found: {:?}", old_path);
-                }
-                let file_name = old_path
-                    .file_name()
-                    .ok_or_else(|| anyhow::anyhow!("invalid central path: {:?}", old_path))?;
-                let new_path = new_base.join(file_name);
-                if new_path.exists() {
-                    anyhow::bail!("target path already exists: {:?}", new_path);
-                }
+        // Migration must be resumable. Bailing out mid-loop used to strand a
+        // skill permanently: the copy+remove fallback could leave the data at
+        // new_path while `?` skipped the upsert below, so the DB still pointed
+        // at the old path — and every retry then died on "target path already
+        // exists". Record each skill the moment its data is in place, and
+        // treat an already-migrated skill as success rather than an error.
+        let mut failures: Vec<String> = Vec::new();
+        for skill in skills {
+            let old_path = std::path::PathBuf::from(&skill.central_path);
+            let Some(file_name) = old_path.file_name() else {
+                failures.push(format!("invalid central path: {:?}", old_path));
+                continue;
+            };
+            let new_path = new_base.join(file_name);
 
-                if let Err(err) = std::fs::rename(&old_path, &new_path) {
-                    copy_dir_recursive(&old_path, &new_path)
-                        .with_context(|| format!("copy {:?} -> {:?}", old_path, new_path))?;
-                    std::fs::remove_dir_all(&old_path)
-                        .with_context(|| format!("cleanup {:?}", old_path))?;
-                    // Surface rename error in logs for troubleshooting.
-                    eprintln!("rename failed, fallback used: {}", err);
-                }
-
+            let record = |path: &std::path::Path| -> anyhow::Result<()> {
                 let mut updated = skill.clone();
-                updated.central_path = new_path.to_string_lossy().to_string();
+                updated.central_path = path.to_string_lossy().to_string();
                 updated.updated_at = now_ms();
-                store.upsert_skill(&updated)?;
+                store.upsert_skill(&updated)
+            };
+
+            // Resume: a previous attempt already put the data at new_path.
+            if !old_path.exists() {
+                if new_path.exists() {
+                    record(&new_path)?;
+                } else {
+                    failures.push(format!("central path not found: {:?}", old_path));
+                }
+                continue;
             }
+            if old_path == new_path {
+                continue;
+            }
+            if new_path.exists() {
+                failures.push(format!("target path already exists: {:?}", new_path));
+                continue;
+            }
+
+            if let Err(rename_err) = std::fs::rename(&old_path, &new_path) {
+                if let Err(copy_err) = copy_dir_recursive(&old_path, &new_path) {
+                    failures.push(format!("copy {old_path:?} -> {new_path:?}: {copy_err:#}"));
+                    continue;
+                }
+                log::warn!("[set_central_repo_path] rename failed, copied instead: {rename_err}");
+                // The data is at new_path now, so the DB must say so even if
+                // the old copy cannot be cleaned up — otherwise the skill is
+                // stranded and the retry is blocked forever.
+                record(&new_path)?;
+                if let Err(cleanup_err) = std::fs::remove_dir_all(&old_path) {
+                    log::warn!(
+                        "[set_central_repo_path] migrated {new_path:?} but could not remove the old copy at {old_path:?}: {cleanup_err}"
+                    );
+                }
+                continue;
+            }
+
+            record(&new_path)?;
+        }
+
+        if !failures.is_empty() {
+            // Successfully migrated skills stay recorded above, so re-running
+            // picks up exactly where this left off.
+            anyhow::bail!(
+                "storage path partially migrated; these skills need attention: {}",
+                failures.join("; ")
+            );
         }
 
         store.set_setting("central_repo_path", new_base.to_string_lossy().as_ref())?;
@@ -1693,6 +1810,10 @@ pub async fn install_git_selection(
 pub struct SyncResultDto {
     pub mode_used: String,
     pub target_path: String,
+    /// Set when the sync succeeded but the result is ambiguous for the tool —
+    /// today: an enabled Claude Code plugin already provides this skill name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub warning: Option<String>,
 }
 
 #[tauri::command]
@@ -1703,6 +1824,8 @@ pub async fn sync_skill_dir(
     tauri::async_runtime::spawn_blocking(move || {
         let result = sync_dir_hybrid(source_path.as_ref(), target_path.as_ref())?;
         Ok::<_, anyhow::Error>(SyncResultDto {
+            // Raw directory sync: no tool identity here, so no overlap check.
+            warning: None,
             mode_used: match result.mode_used {
                 SyncMode::Auto => "auto",
                 SyncMode::Symlink => "symlink",
@@ -1779,6 +1902,7 @@ pub async fn sync_skill_to_tool(
                 && target.exists()
             {
                 return Ok::<_, anyhow::Error>(SyncResultDto {
+                    warning: claude_plugin_overlap_warning(&tool, &name),
                     mode_used: existing.mode,
                     target_path: existing.target_path,
                 });
@@ -1840,6 +1964,7 @@ pub async fn sync_skill_to_tool(
             }
             .to_string(),
             target_path: result.target_path.to_string_lossy().to_string(),
+            warning: claude_plugin_overlap_warning(&tool, &name),
         })
     })
     .await
@@ -1946,6 +2071,21 @@ pub async fn set_skill_enabled(
         // a pin-installed skill has no SQLite target, so the legacy path alone
         // leaves it live and the next apply re-materializes it.
         let skill_name = store.get_skill_by_id(&skillId)?.map(|skill| skill.name);
+        // Re-enabling is how a disabled duplicate comes back to life. Without
+        // this the whole name rule leaks: installs are refused, but flipping an
+        // old duplicate back on quietly recreates the collision.
+        if enabled {
+            if let Some(name) = &skill_name {
+                if let Some(existing) = store.active_name_holder(name, Some(&skillId))? {
+                    anyhow::bail!(
+                        "NAME_TAKEN|{}|{}|{}",
+                        existing.id,
+                        existing.name,
+                        existing.central_path
+                    );
+                }
+            }
+        }
         if let Some(name) = &skill_name {
             if let Some(basin_dir) = configured_basin_dir(&store)? {
                 let machine = current_machine_id(&store)?;
@@ -1953,13 +2093,17 @@ pub async fn set_skill_enabled(
                 crate::core::pins::set_pins_enabled(
                     &basin_dir, &machine, name, enabled, &tool_dirs,
                 )?;
-                crate::core::basin::basin_commit_all(
+                // Publish, don't just commit: a disable that never leaves this
+                // machine lets the fleet keep the skill live everywhere else.
+                if let Some(warning) = publish_basin_change(
                     &basin_dir,
                     &format!(
                         "{} pins for {name}",
                         if enabled { "enable" } else { "disable" }
                     ),
-                )?;
+                ) {
+                    log::warn!("[set_skill_enabled] {warning}");
+                }
             }
         }
 
@@ -2337,7 +2481,15 @@ fn unpin_everywhere(store: &SkillStore, skill_name: &str) -> anyhow::Result<Vec<
             Err(err) => failures.push(format!("{tool}: {err:#}")),
         }
     }
-    crate::core::basin::basin_commit_all(&basin_dir, &format!("unpin {skill_name} (deleted)"))?;
+    // A delete that stays local is the worst case for the fleet: other
+    // machines keep applying a pin for a skill that no longer exists. Surface
+    // the publish failure alongside the per-tool failures rather than losing
+    // it — the deletion itself already happened on disk.
+    if let Some(warning) =
+        publish_basin_change(&basin_dir, &format!("unpin {skill_name} (deleted)"))
+    {
+        failures.push(warning);
+    }
     Ok(failures)
 }
 

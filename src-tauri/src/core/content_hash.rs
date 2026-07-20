@@ -16,6 +16,17 @@ pub fn hash_dir(path: &Path) -> Result<String> {
 
     for entry in WalkDir::new(path)
         .follow_links(false)
+        // WalkDir yields entries in filesystem order, which differs between
+        // machines and filesystems. Normalizing separators (below) is pointless
+        // without this: the same content must be visited in the same order to
+        // hash identically everywhere. Sort on the lossy string rather than
+        // sort_by_file_name so the comparison is byte-identical across
+        // platforms for non-ASCII names too.
+        .sort_by(|a, b| {
+            a.file_name()
+                .to_string_lossy()
+                .cmp(&b.file_name().to_string_lossy())
+        })
         .into_iter()
         .filter_entry(|entry| !is_ignored(entry))
     {

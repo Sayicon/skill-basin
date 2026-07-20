@@ -180,7 +180,13 @@ pub(crate) fn expand_custom_tool_path(input: &str) -> Result<PathBuf> {
     if trimmed == "~" {
         return dirs::home_dir().context("failed to resolve home directory");
     }
-    if let Some(rest) = trimmed.strip_prefix("~/") {
+    // Accept the native separator too: a Windows user typing `~\skills` (or
+    // pasting it from Explorer) otherwise got a literal "~\skills" directory
+    // created next to the app instead of one under their home.
+    if let Some(rest) = trimmed
+        .strip_prefix("~/")
+        .or_else(|| trimmed.strip_prefix("~\\"))
+    {
         let home = dirs::home_dir().context("failed to resolve home directory")?;
         return Ok(home.join(rest));
     }

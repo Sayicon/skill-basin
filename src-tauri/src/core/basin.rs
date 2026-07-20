@@ -319,8 +319,90 @@ pub fn basin_commit_all(basin_dir: &Path, message: &str) -> Result<Option<String
 
 /// Clone a basin from `url` (any git remote, including a local path) into
 /// `dest`, or pull if `dest` already has it. Returns HEAD revision.
+///
+/// The pull half deliberately does NOT go through `git_fetcher::clone_or_pull`:
+/// that implements "pull" as `fetch` + `reset --hard FETCH_HEAD`, which is
+/// correct for a throwaway read-only cache clone but destructive for the
+/// basin. The fleet agent commits its status report locally and pushes after;
+/// if that push fails (offline, rejected, no credentials) the commit sits
+/// unpushed, and the next run's `reset --hard` would erase it permanently —
+/// exactly the failure `basin_push_with_rebase` exists to avoid. Rebase
+/// instead, so local work is replayed on top rather than discarded.
 pub fn basin_clone_or_pull(url: &str, dest: &Path) -> Result<String> {
-    crate::core::git_fetcher::clone_or_pull(url, dest, None, None, None)
+    if !dest.join(".git").exists() {
+        return crate::core::git_fetcher::clone_or_pull(url, dest, None, None, None);
+    }
+
+    let run = |args: &[&str]| -> Result<std::process::Output> {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dest)
+            .output()
+            .with_context(|| format!("run git {args:?} in {dest:?}"))
+    };
+
+    let fetch = run(&["fetch", "origin"])?;
+    if !fetch.status.success() {
+        anyhow::bail!(
+            "git fetch failed for basin {:?}: {}",
+            dest,
+            String::from_utf8_lossy(&fetch.stderr).trim()
+        );
+    }
+
+    // Replay any local commits on top of the remote head. A conflict is a
+    // genuine divergence that needs a human — abort and report rather than
+    // leave the basin mid-rebase.
+    let upstream = resolve_remote_head(dest)?;
+    let rebase = run(&["rebase", &upstream])?;
+    if !rebase.status.success() {
+        let _ = run(&["rebase", "--abort"]);
+        anyhow::bail!(
+            "git rebase onto {} failed for basin {:?} (conflicting basin edits?): {}",
+            upstream,
+            dest,
+            String::from_utf8_lossy(&rebase.stderr).trim()
+        );
+    }
+
+    let head = run(&["rev-parse", "HEAD"])?;
+    if !head.status.success() {
+        anyhow::bail!(
+            "git rev-parse HEAD failed for basin {:?}: {}",
+            dest,
+            String::from_utf8_lossy(&head.stderr).trim()
+        );
+    }
+    Ok(String::from_utf8_lossy(&head.stdout).trim().to_string())
+}
+
+/// First remote-tracking ref that actually resolves. `origin/HEAD` is only
+/// set when the clone recorded it, so a basin cloned by some other tool (or
+/// created locally and given a remote) needs the explicit fallbacks.
+fn resolve_remote_head(dest: &Path) -> Result<String> {
+    for candidate in ["origin/HEAD", "origin/main", "origin/master"] {
+        let out = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", "--quiet", candidate])
+            .current_dir(dest)
+            .output()
+            .with_context(|| format!("resolve {candidate} in {dest:?}"))?;
+        if out.status.success() {
+            return Ok(candidate.to_string());
+        }
+    }
+    anyhow::bail!(
+        "basin {:?} has no resolvable origin head (tried origin/HEAD, origin/main, origin/master)",
+        dest
+    )
+}
+
+/// Whether the basin has an `origin` remote to publish to. A purely local
+/// basin (one machine, no fleet) is a valid setup, so callers use this to
+/// avoid warning about a push that was never meant to happen.
+pub fn basin_has_remote(basin_dir: &Path) -> bool {
+    git2::Repository::open(basin_dir)
+        .and_then(|repo| repo.find_remote("origin").map(|_| ()))
+        .is_ok()
 }
 
 /// Push the basin to its `origin` remote via the system git binary, which
@@ -366,11 +448,13 @@ pub fn basin_push_with_rebase(basin_dir: &Path) -> Result<()> {
             String::from_utf8_lossy(&fetch.stderr).trim()
         );
     }
-    let rebase = run(&["rebase", "origin/HEAD"])?;
+    let upstream = resolve_remote_head(basin_dir)?;
+    let rebase = run(&["rebase", &upstream])?;
     if !rebase.status.success() {
         let _ = run(&["rebase", "--abort"]);
         anyhow::bail!(
-            "git rebase failed during push retry (conflicting basin edits?): {}",
+            "git rebase onto {} failed during push retry (conflicting basin edits?): {}",
+            upstream,
             String::from_utf8_lossy(&rebase.stderr).trim()
         );
     }

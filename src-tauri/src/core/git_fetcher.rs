@@ -63,9 +63,25 @@ pub fn clone_or_pull(
         log::info!("[git_fetcher] system git not available; using libgit2");
     }
 
+    // Proxy enforcement must NOT depend on a git binary being present. The
+    // libgit2 path below never consults proxy_url, so when no system git
+    // exists the only way to honour "all access goes through the proxy" is to
+    // refuse rather than quietly connect direct.
+    if proxy_url.is_some_and(|v| !v.trim().is_empty()) {
+        anyhow::bail!(
+            "a GitHub proxy is configured, but the built-in git (libgit2) cannot route through it and no system git binary was found. Install git, or clear the proxy setting."
+        );
+    }
+
+    if let Some(cancel) = cancel {
+        if cancel.is_cancelled() {
+            anyhow::bail!("operation cancelled");
+        }
+    }
+
     let repo = if dest.exists() {
         let repo = Repository::open(dest).with_context(|| format!("open repo at {:?}", dest))?;
-        fetch_origin(&repo)?;
+        fetch_origin(&repo, cancel)?;
         repo
     } else {
         Repository::clone(repo_url, dest)
@@ -550,9 +566,17 @@ fn clone_or_pull_via_git_cli(
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-fn fetch_origin(repo: &Repository) -> Result<()> {
+fn fetch_origin(repo: &Repository, cancel: Option<&CancelToken>) -> Result<()> {
     let mut remote = repo.find_remote("origin")?;
     let mut opts = FetchOptions::new();
+    // libgit2 has no timeout knob; the cancel token is the only way a stuck
+    // fetch can be interrupted. Returning false from the progress callback
+    // aborts the transfer.
+    let mut callbacks = git2::RemoteCallbacks::new();
+    if let Some(cancel) = cancel {
+        callbacks.transfer_progress(move |_| !cancel.is_cancelled());
+    }
+    opts.remote_callbacks(callbacks);
     remote.fetch(
         &["refs/heads/*:refs/remotes/origin/*"],
         Some(&mut opts),

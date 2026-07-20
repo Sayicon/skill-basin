@@ -69,9 +69,21 @@ import type {
   TagWithCountDto,
   ToolConfigDto,
   ToolOption,
+  SyncResultDto,
   ToolStatusDto,
   UpdateResultDto,
 } from './components/skills/types'
+
+/**
+ * A sync can succeed and still leave Claude Code loading the same skill twice,
+ * because an enabled plugin provides it as well. Keying the toast on the
+ * message makes a batch sync raise each overlap once instead of once per tool.
+ */
+const notifySyncWarning = (result: SyncResultDto | undefined | null) => {
+  if (result?.warning) {
+    toast.warning(result.warning, { id: result.warning, duration: 12000 })
+  }
+}
 
 type SkillScopeState = Record<
   string,
@@ -234,6 +246,12 @@ function App() {
       }
       if (raw.startsWith('TARGET_EXISTS|')) {
         return t('errors.targetExists')
+      }
+      // NAME_TAKEN|<existing id>|<name>|<central path> — a skill's name is its
+      // sync identity, so two enabled skills may not share one.
+      if (raw.startsWith('NAME_TAKEN|')) {
+        const parts = raw.split('|')
+        return t('errors.nameTaken', { name: parts[2] ?? '', path: parts[3] ?? '' })
       }
       if (raw.startsWith('TOOL_NOT_INSTALLED|')) {
         return t('errors.toolNotInstalled')
@@ -770,17 +788,19 @@ function App() {
           }),
         )
         try {
-          await invokeTauri('sync_skill_to_tool', {
-            sourcePath: created.central_path,
-            skillId: created.skill_id,
-            tool: job.toolId,
-            name: created.name,
-            scope: job.scope,
-            ...(job.scope === 'project'
-              ? { projectPath: job.projectPath }
-              : {}),
-            overwriteIfSameContent: true,
-          })
+          notifySyncWarning(
+            await invokeTauri<SyncResultDto>('sync_skill_to_tool', {
+              sourcePath: created.central_path,
+              skillId: created.skill_id,
+              tool: job.toolId,
+              name: created.name,
+              scope: job.scope,
+              ...(job.scope === 'project'
+                ? { projectPath: job.projectPath }
+                : {}),
+              overwriteIfSameContent: true,
+            }),
+          )
         } catch (err) {
           collectedErrors.push({
             title: t('errors.syncFailedTitle', {
@@ -1696,15 +1716,17 @@ function App() {
           if (!toolSupportsProjectScope(target.tool)) continue
         }
 
-        await invokeTauri('sync_skill_to_tool', {
-          sourcePath: skill.central_path,
-          skillId: skill.id,
-          tool: target.tool,
-          name: skill.name,
-          overwriteIfSameContent: true,
-          scope,
-          ...(scope === 'project' ? { projectPath } : {}),
-        })
+        notifySyncWarning(
+          await invokeTauri<SyncResultDto>('sync_skill_to_tool', {
+            sourcePath: skill.central_path,
+            skillId: skill.id,
+            tool: target.tool,
+            name: skill.name,
+            overwriteIfSameContent: true,
+            scope,
+            ...(scope === 'project' ? { projectPath } : {}),
+          }),
+        )
       }
     },
     [installedToolIds, invokeTauri, toolSupportsProjectScope],
@@ -1918,14 +1940,16 @@ function App() {
                 })
               }
             } else {
-              await invokeTauri('sync_skill_to_tool', {
-                sourcePath: skill.central_path,
-                skillId: skill.id,
-                tool: toolId,
-                name: skill.name,
-                overwriteIfSameContent: true,
-                scope: 'global',
-              })
+              notifySyncWarning(
+                await invokeTauri<SyncResultDto>('sync_skill_to_tool', {
+                  sourcePath: skill.central_path,
+                  skillId: skill.id,
+                  tool: toolId,
+                  name: skill.name,
+                  overwriteIfSameContent: true,
+                  scope: 'global',
+                }),
+              )
             }
           } catch (err) {
             errors.push({
@@ -2403,15 +2427,17 @@ function App() {
                 (chosenVariantTool === tool.id || sharedToolIds.includes(chosenVariantTool))) ||
                 hasSameContentVariant,
             )
-            await invokeTauri('sync_skill_to_tool', {
-              sourcePath: installResult.central_path,
-              skillId: installResult.skill_id,
-              tool: tool.id,
-              name: group.name,
-              // 自动接管：来源目录或内容一致的已发现目录可安全替换为 Hub 管理的同步目标。
-              overwrite,
-              overwriteIfSameContent: true,
-            })
+            notifySyncWarning(
+              await invokeTauri<SyncResultDto>('sync_skill_to_tool', {
+                sourcePath: installResult.central_path,
+                skillId: installResult.skill_id,
+                tool: tool.id,
+                name: group.name,
+                // 自动接管：来源目录或内容一致的已发现目录可安全替换为 Hub 管理的同步目标。
+                overwrite,
+                overwriteIfSameContent: true,
+              }),
+            )
           } catch (err) {
             const raw = err instanceof Error ? err.message : String(err)
             if (raw.startsWith('TARGET_EXISTS|')) {

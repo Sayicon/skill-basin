@@ -3,6 +3,10 @@ use serde::Deserialize;
 
 use super::network_proxy::github_http_client;
 
+/// Search must not hang the UI: GitHub's search API is slow under load and a
+/// client with no timeout waits forever.
+const SEARCH_TIMEOUT_SECS: u64 = 30;
+
 #[derive(Debug, Deserialize)]
 struct SearchResponse {
     items: Vec<RepoItem>,
@@ -66,7 +70,9 @@ pub(super) fn search_github_repos_inner(
     token: Option<&str>,
     proxy_url: &str,
 ) -> Result<Vec<RepoSummary>> {
-    let client = github_http_client(proxy_url, None)?;
+    // Search is the endpoint most likely to hit GitHub's rate limit (10/min
+    // unauthenticated), and a request with no timeout can hang the UI forever.
+    let client = github_http_client(proxy_url, Some(SEARCH_TIMEOUT_SECS))?;
     let base_url = base_url.trim_end_matches('/');
     let url = format!(
         "{}/search/repositories?q={}&per_page={}",
@@ -79,11 +85,12 @@ pub(super) fn search_github_repos_inner(
     if let Some(t) = token {
         req = req.header("Authorization", format!("Bearer {}", t));
     }
-    let response = req
-        .send()
-        .context("GitHub search request failed")?
-        .error_for_status()
-        .context("GitHub search returned error")?;
+    // Route through the shared checker so a 403 rate-limit surfaces as
+    // RATE_LIMITED|<mins> here too, not just on the download path.
+    let response = crate::core::github_download::check_github_response(
+        req.send().context("GitHub search request failed")?,
+        "GitHub search",
+    )?;
 
     let result: SearchResponse = response.json().context("parse GitHub response")?;
 

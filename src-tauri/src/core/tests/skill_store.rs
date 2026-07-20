@@ -38,6 +38,85 @@ fn schema_is_idempotent() {
 }
 
 #[test]
+fn active_name_holder_finds_only_enabled_skills_case_insensitively() {
+    let (_dir, store) = make_store();
+    store
+        .upsert_skill(&make_skill("a", "nextjs", "/central/nextjs", 1))
+        .unwrap();
+
+    // A live holder is found, whatever case the caller asks in: the name is a
+    // directory name, and Windows/macOS filesystems do not distinguish case.
+    for probe in ["nextjs", "NextJS", "NEXTJS"] {
+        let holder = store.active_name_holder(probe, None).unwrap();
+        assert_eq!(
+            holder.map(|s| s.id),
+            Some("a".to_string()),
+            "probe {probe:?} should find the live holder"
+        );
+    }
+
+    // An unrelated name is free.
+    assert!(store
+        .active_name_holder("vercel-cli", None)
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn disabled_duplicates_do_not_hold_a_name() {
+    // The rule is "no two ENABLED skills share a name" on purpose: an existing
+    // library full of disabled duplicates has to keep working with no migration.
+    let (_dir, store) = make_store();
+    let mut disabled = make_skill("old", "nextjs", "/central/nextjs-old", 1);
+    disabled.enabled = false;
+    store.upsert_skill(&disabled).unwrap();
+
+    assert!(
+        store.active_name_holder("nextjs", None).unwrap().is_none(),
+        "a disabled duplicate must not block the name"
+    );
+
+    // ...but once something live claims it, the name is taken again.
+    store
+        .upsert_skill(&make_skill("new", "nextjs", "/central/nextjs", 2))
+        .unwrap();
+    assert_eq!(
+        store
+            .active_name_holder("nextjs", None)
+            .unwrap()
+            .map(|s| s.id),
+        Some("new".to_string())
+    );
+}
+
+#[test]
+fn exclude_id_lets_a_skill_not_conflict_with_itself() {
+    // Re-enabling asks "is anyone ELSE holding my name?" — without the
+    // exclusion a skill would always collide with its own row.
+    let (_dir, store) = make_store();
+    store
+        .upsert_skill(&make_skill("self", "nextjs", "/central/nextjs", 1))
+        .unwrap();
+
+    assert!(store
+        .active_name_holder("nextjs", Some("self"))
+        .unwrap()
+        .is_none());
+
+    // A different live skill on the same name still blocks it.
+    store
+        .upsert_skill(&make_skill("other", "nextjs", "/central/nextjs-2", 2))
+        .unwrap();
+    assert_eq!(
+        store
+            .active_name_holder("nextjs", Some("self"))
+            .unwrap()
+            .map(|s| s.id),
+        Some("other".to_string())
+    );
+}
+
+#[test]
 fn migrates_v3_targets_to_global_scope() {
     let dir = tempfile::tempdir().expect("tempdir");
     let db = dir.path().join("test.db");

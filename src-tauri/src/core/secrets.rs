@@ -5,6 +5,20 @@
 //! Manager / macOS Keychain / libsecret) first, then `~/.skillbasin/
 //! secrets.env` — and anything still unresolved is REPORTED, never invented,
 //! so the Settings screen can show exactly which keys a machine is missing.
+//!
+//! # Scope: reporting only, on purpose (docs/DECISIONS.md D16)
+//!
+//! This module answers "can this machine satisfy that secret?" and nothing
+//! else. It deliberately does NOT substitute resolved values into any file:
+//! nothing reads or writes the basin's `mcp/` directory today, and the fleet
+//! agent never touches it. That is a drawn boundary, not an unfinished
+//! implementation — read it as such before "completing" it.
+//!
+//! Materializing configs needs product answers first (which tool, which path
+//! and format, merge vs overwrite of the user's existing config, plaintext on
+//! disk with what permissions, and whether the agent does it unattended on a
+//! remote machine). Getting those wrong writes a plaintext credential to the
+//! wrong place, so the code stops here until they are decided.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -19,10 +33,25 @@ pub enum SecretSource {
     EnvFile,
 }
 
+/// Outcome of a keychain lookup.
+///
+/// "Not stored" and "could not ask" are different facts and must not collapse
+/// into one: a locked keychain reported as `Absent` sends the user off to
+/// re-enter a secret they already have, and silently hides that the machine's
+/// credential store is unreachable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SecretLookup {
+    Found(String),
+    /// The store answered, and there is no such entry.
+    Absent,
+    /// The store could not be consulted (locked, no backend, D-Bus down...).
+    Unavailable(String),
+}
+
 /// Abstraction over the OS credential store so resolution order is testable
 /// without touching a real keychain.
 pub trait SecretStore {
-    fn get(&self, name: &str) -> Option<String>;
+    fn get(&self, name: &str) -> SecretLookup;
 }
 
 /// The real OS keychain, service-scoped to SkillBasin.
@@ -31,11 +60,16 @@ pub struct OsKeychain;
 pub const KEYCHAIN_SERVICE: &str = "skillbasin";
 
 impl SecretStore for OsKeychain {
-    fn get(&self, name: &str) -> Option<String> {
-        keyring::Entry::new(KEYCHAIN_SERVICE, name)
-            .ok()?
-            .get_password()
-            .ok()
+    fn get(&self, name: &str) -> SecretLookup {
+        let entry = match keyring::Entry::new(KEYCHAIN_SERVICE, name) {
+            Ok(entry) => entry,
+            Err(err) => return SecretLookup::Unavailable(err.to_string()),
+        };
+        match entry.get_password() {
+            Ok(value) => SecretLookup::Found(value),
+            Err(keyring::Error::NoEntry) => SecretLookup::Absent,
+            Err(err) => SecretLookup::Unavailable(err.to_string()),
+        }
     }
 }
 
@@ -45,6 +79,10 @@ pub struct SecretResolution {
     pub sources: BTreeMap<String, SecretSource>,
     /// Names nothing could satisfy — the Settings "eksik" list.
     pub missing: Vec<String>,
+    /// Names whose keychain lookup could not be performed at all, with why.
+    /// Distinct from `missing`: the secret may well be stored, we just could
+    /// not ask. Telling the user to re-enter it would be wrong advice.
+    pub unavailable: BTreeMap<String, String>,
 }
 
 /// Parse a dotenv-style file: `KEY=value` lines, `#` comments, optional
@@ -91,14 +129,24 @@ pub fn resolve_secrets(
     let env_map = env_file.map(read_env_file).unwrap_or_default();
     let mut out = SecretResolution::default();
     for name in names {
-        if let Some(value) = keychain.get(name) {
+        let lookup = keychain.get(name);
+        if let SecretLookup::Found(value) = lookup {
             out.resolved.insert(name.clone(), value);
             out.sources.insert(name.clone(), SecretSource::Keychain);
-        } else if let Some(value) = env_map.get(name) {
+            continue;
+        }
+        // The env file is still a legitimate answer even when the keychain is
+        // unreachable, so fall through to it either way.
+        if let Some(value) = env_map.get(name) {
             out.resolved.insert(name.clone(), value.clone());
             out.sources.insert(name.clone(), SecretSource::EnvFile);
-        } else {
-            out.missing.push(name.clone());
+            continue;
+        }
+        match lookup {
+            SecretLookup::Unavailable(reason) => {
+                out.unavailable.insert(name.clone(), reason);
+            }
+            _ => out.missing.push(name.clone()),
         }
     }
     out

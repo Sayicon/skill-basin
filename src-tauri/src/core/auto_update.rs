@@ -191,15 +191,75 @@ pub fn is_auto_update_due(config: &AutoUpdateConfig, now_ms: i64) -> bool {
     if !config.enabled {
         return false;
     }
-    let Some(last_run_at) = config.last_run_at else {
-        return true;
+    // Must branch on the schedule type: reading only interval_minutes() made
+    // "Daily at HH:mm" behave as whatever interval_value/interval_unit
+    // happened to hold, so choosing Daily in the UI did nothing.
+    match config.schedule.schedule_type {
+        AutoUpdateScheduleType::Interval => {
+            let Some(last_run_at) = config.last_run_at else {
+                return true;
+            };
+            let interval_ms = config
+                .schedule
+                .interval_minutes()
+                .saturating_mul(60)
+                .saturating_mul(1000);
+            now_ms.saturating_sub(last_run_at) >= interval_ms
+        }
+        AutoUpdateScheduleType::Daily => {
+            is_daily_due(&config.schedule.daily_time, config.last_run_at, now_ms)
+        }
+    }
+}
+
+/// Daily fires at most once per LOCAL calendar day, at or after `daily_time`.
+///
+/// Local, not UTC: the user picked a wall-clock time in a time picker, so
+/// "03:00" has to mean 03:00 where they are.
+fn is_daily_due(daily_time: &str, last_run_at: Option<i64>, now_ms: i64) -> bool {
+    use chrono::{Local, TimeZone};
+
+    let Some((hour, minute)) = parse_daily_time(daily_time) else {
+        // A malformed time is a config error. Never firing is the safe
+        // reading — firing every tick would hammer every skill's remote.
+        return false;
     };
-    let interval_ms = config
-        .schedule
-        .interval_minutes()
-        .saturating_mul(60)
-        .saturating_mul(1000);
-    now_ms.saturating_sub(last_run_at) >= interval_ms
+    let Some(now) = Local.timestamp_millis_opt(now_ms).single() else {
+        return false;
+    };
+    // `earliest()` rather than `single()`: on a DST spring-forward the chosen
+    // time may not exist locally, and skipping that day entirely would be a
+    // silent miss.
+    let Some(scheduled_today) = now
+        .date_naive()
+        .and_hms_opt(hour, minute, 0)
+        .and_then(|naive| Local.from_local_datetime(&naive).earliest())
+    else {
+        return false;
+    };
+
+    if now < scheduled_today {
+        return false;
+    }
+    match last_run_at {
+        None => true,
+        Some(last) => match Local.timestamp_millis_opt(last).single() {
+            Some(last) => last < scheduled_today,
+            None => true,
+        },
+    }
+}
+
+/// `HH:mm` -> (hour, minute). The single source of truth for the format, so
+/// validation and scheduling can never disagree about what is accepted.
+fn parse_daily_time(time: &str) -> Option<(u32, u32)> {
+    let (hour, minute) = time.split_once(':')?;
+    if hour.len() != 2 || minute.len() != 2 {
+        return None;
+    }
+    let hour: u32 = hour.parse().ok()?;
+    let minute: u32 = minute.parse().ok()?;
+    (hour <= 23 && minute <= 59).then_some((hour, minute))
 }
 
 #[allow(dead_code)]
@@ -536,19 +596,7 @@ fn validate_interval_minutes(interval_minutes: i64) -> Result<()> {
 }
 
 fn is_valid_daily_time(time: &str) -> bool {
-    let Some((hour, minute)) = time.split_once(':') else {
-        return false;
-    };
-    if hour.len() != 2 || minute.len() != 2 {
-        return false;
-    }
-    let Ok(hour) = hour.parse::<u8>() else {
-        return false;
-    };
-    let Ok(minute) = minute.parse::<u8>() else {
-        return false;
-    };
-    hour <= 23 && minute <= 59
+    parse_daily_time(time).is_some()
 }
 
 fn default_schedule() -> AutoUpdateSchedule {

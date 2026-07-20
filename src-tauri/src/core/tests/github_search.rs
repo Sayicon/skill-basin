@@ -124,11 +124,41 @@ fn http_error_has_context() {
     let mut server = mockito::Server::new();
     let _m = server
         .mock("GET", "/search/repositories")
+        // Without this the query string stops the mock from matching and
+        // mockito answers 501 — the assertion then passes against the wrong
+        // response entirely.
+        .match_query(Matcher::Any)
         .with_status(500)
         .with_body("oops")
         .create();
 
     let err = search_github_repos_inner(&server.url(), "x", 2, None, "").unwrap_err();
     let msg = format!("{:#}", err);
-    assert!(msg.contains("GitHub search returned error"), "{msg}");
+    // Search now shares the download path's response checker, so the message
+    // names the endpoint rather than using its own wording.
+    assert!(msg.contains("GitHub search"), "{msg}");
+}
+
+#[test]
+fn rate_limited_search_is_classified() {
+    // Search is the endpoint most likely to hit GitHub's limit (10/min
+    // unauthenticated). A bare 403 loses the RATE_LIMITED| signal the UI needs
+    // to tell the user how long to wait.
+    let reset_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs()
+        + 120;
+    let mut server = mockito::Server::new();
+    let _m = server
+        .mock("GET", "/search/repositories")
+        .match_query(Matcher::Any)
+        .with_status(403)
+        .with_header("x-ratelimit-reset", &reset_at.to_string())
+        .with_body("rate limited")
+        .create();
+
+    let err = search_github_repos_inner(&server.url(), "x", 2, None, "").unwrap_err();
+    let msg = format!("{:#}", err);
+    assert!(msg.contains("RATE_LIMITED|"), "{msg}");
 }

@@ -14,9 +14,31 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+
+/// Serializes the whole read-modify-write-apply cycle on pins.json.
+///
+/// `set_pin`/`unset_pin`/`set_pins_enabled` each read pins.json, mutate it in
+/// memory, write it back and then apply the resulting plan. Tauri dispatches
+/// commands onto a thread pool, so two pin changes issued together could
+/// interleave as read-A, read-B, write-A, write-B — silently discarding A.
+/// Holding the lock across the apply as well keeps what is on disk consistent
+/// with the file that was just written.
+///
+/// This guards THIS process only. A fleet agent running on the same host is a
+/// separate process and would need a file lock; today the agent runs on
+/// machines the desktop app does not.
+static PINS_LOCK: Mutex<()> = Mutex::new(());
+
+fn pins_lock() -> std::sync::MutexGuard<'static, ()> {
+    // A poisoned lock only means some earlier pin write panicked. Every cycle
+    // re-reads pins.json from disk, so there is no corrupt in-memory state to
+    // inherit — recovering beats failing every later pin forever.
+    PINS_LOCK.lock().unwrap_or_else(|err| err.into_inner())
+}
 
 pub const PINS_FILE: &str = "pins.json";
 pub const MANAGED_MANIFEST_SUFFIX: &str = ".skillbasin.json";
@@ -153,6 +175,7 @@ pub fn set_pin(
         anyhow::bail!("TOOL_DIR_UNKNOWN|{tool}");
     }
 
+    let _guard = pins_lock();
     let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
 
     for entry in pins.pins.iter_mut() {
@@ -198,6 +221,7 @@ pub fn unset_pin(
     tool: &str,
     tool_dirs: &BTreeMap<String, PathBuf>,
 ) -> Result<(MachinePins, Vec<ApplyResult>)> {
+    let _guard = pins_lock();
     let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
     for entry in pins.pins.iter_mut() {
         if entry.skill == skill {
@@ -224,6 +248,7 @@ pub fn set_pins_enabled(
     enabled: bool,
     tool_dirs: &BTreeMap<String, PathBuf>,
 ) -> Result<(MachinePins, Vec<ApplyResult>)> {
+    let _guard = pins_lock();
     let mut pins = read_machine_pins_or_empty(basin_dir, machine)?;
     for entry in pins.pins.iter_mut() {
         if entry.skill == skill {
@@ -253,6 +278,28 @@ pub fn read_managed_manifest(target: &Path) -> Option<ManagedManifest> {
     serde_json::from_str(&content).ok()
 }
 
+/// Reject any skill id that is not a single, ordinary path component.
+///
+/// A skill id is joined onto a tool directory to form the sync target, and
+/// `apply_plan` recursively removes that target. `Path::join` resolves `..`
+/// at the OS level, so an id like `../../.ssh` would place — and later
+/// delete — a directory well outside the tool dir. Refusing loudly is the
+/// only safe answer: this is exactly the "never touch unmanaged
+/// directories" guarantee.
+fn ensure_safe_skill_id(skill: &str) -> Result<()> {
+    use std::path::Component;
+    let mut components = Path::new(skill).components();
+    let single_normal =
+        matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none();
+    if !single_normal || skill.contains('\0') {
+        anyhow::bail!(
+            "unsafe skill id {:?} in pins.json / managed manifest: a skill id must be a single plain directory name",
+            skill
+        );
+    }
+    Ok(())
+}
+
 /// Diff desired pins against the actual state of the given tool skill
 /// directories. `tool_dirs` maps tool key -> that tool's skills directory.
 pub fn plan_sync(
@@ -262,6 +309,11 @@ pub fn plan_sync(
     // Desired: (tool, skill) -> (version, strategy), enabled targets only.
     let mut desired: BTreeMap<(String, String), (String, String)> = BTreeMap::new();
     for entry in &pins.pins {
+        // Every skill id here becomes a path component under a tool dir, and
+        // apply_plan calls remove_path_any on the result. pins.json is merged
+        // by git and applied unattended by the fleet agent, so a corrupt id
+        // must be refused before it can escape the tool directory.
+        ensure_safe_skill_id(&entry.skill)?;
         for (tool, target) in &entry.targets {
             if !target.enabled || !tool_dirs.contains_key(tool) {
                 continue;
@@ -286,6 +338,10 @@ pub fn plan_sync(
             // filter on the entry's kind adds anything.
             if let Some(manifest) = read_managed_manifest(&entry.path()) {
                 let skill = manifest.skill.clone();
+                // Same guard as above: the Remove branch joins this onto the
+                // tool dir and deletes it, so a tampered manifest must not be
+                // able to point outside.
+                ensure_safe_skill_id(&skill)?;
                 managed.insert((tool.clone(), skill), manifest);
             }
         }
@@ -339,11 +395,15 @@ pub fn plan_sync(
     Ok(plan)
 }
 
-fn sync_with_strategy(source: &Path, target: &Path, strategy: &str) -> Result<()> {
+fn sync_with_strategy(tool: &str, source: &Path, target: &Path, strategy: &str) -> Result<()> {
     if strategy == "copy" {
         crate::core::sync_engine::sync_dir_copy_with_overwrite(source, target, true)?;
     } else {
-        crate::core::sync_engine::sync_dir_hybrid_with_overwrite(source, target, true)?;
+        // Must go through the tool-aware entry point: some tools (Cursor)
+        // cannot follow symlinks/junctions, so "hybrid" has to degrade to a
+        // copy for them. Calling the hybrid fn directly here silently left
+        // every Cursor pin as an unusable link.
+        crate::core::sync_engine::sync_dir_for_tool_with_overwrite(tool, source, target, true)?;
     }
     Ok(())
 }
@@ -352,6 +412,7 @@ fn install_version(
     basin_dir: &Path,
     skill: &str,
     version: &str,
+    tool: &str,
     target: &Path,
     strategy: &str,
 ) -> Result<()> {
@@ -359,7 +420,7 @@ fn install_version(
     if !source.exists() {
         anyhow::bail!("version {} of {} not found in basin", version, skill);
     }
-    sync_with_strategy(&source, target, strategy)?;
+    sync_with_strategy(tool, &source, target, strategy)?;
 
     // Content hash from metadata when recorded; hash the source otherwise.
     let content_hash = crate::core::basin::read_skill_meta(basin_dir, skill)
@@ -406,7 +467,7 @@ pub fn apply_plan(basin_dir: &Path, plan: &[PlanAction]) -> Result<Vec<ApplyResu
             } => (
                 skill,
                 tool,
-                install_version(basin_dir, skill, version, target, strategy),
+                install_version(basin_dir, skill, version, tool, target, strategy),
             ),
             PlanAction::Remove {
                 skill,

@@ -128,6 +128,15 @@ export type PinApplyResultDto = {
 export type PinSyncResultDto = {
   pins: MachinePinsDto
   results: PinApplyResultDto[]
+  /** Set when the pin applied on disk but committing/pushing the basin did not. */
+  basin_warning?: string
+}
+
+export type SyncResultDto = {
+  mode_used: string
+  target_path: string
+  /** Sync succeeded, but an enabled Claude Code plugin provides this skill too. */
+  warning?: string
 }
 
 export type PluginOverlapDto = {

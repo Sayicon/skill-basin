@@ -38,8 +38,14 @@ fn reports_enabled_plugin_skill_with_attribution() {
     );
 
     let got = enabled_plugin_skills(h);
-    assert_eq!(got.get("nextjs").map(String::as_str), Some("vercel-plugin@vercel"));
-    assert_eq!(got.get("ai-sdk").map(String::as_str), Some("vercel-plugin@vercel"));
+    assert_eq!(
+        got.get("nextjs").map(String::as_str),
+        Some("vercel-plugin@vercel")
+    );
+    assert_eq!(
+        got.get("ai-sdk").map(String::as_str),
+        Some("vercel-plugin@vercel")
+    );
     assert_eq!(got.len(), 2);
 }
 
@@ -81,6 +87,9 @@ fn enabled_but_not_installed_is_skipped() {
         &h.join("settings.json"),
         r#"{"enabledPlugins":{"ghost@mp":true}}"#,
     );
-    write(&h.join("plugins/installed_plugins.json"), r#"{"plugins":{}}"#);
+    write(
+        &h.join("plugins/installed_plugins.json"),
+        r#"{"plugins":{}}"#,
+    );
     assert!(enabled_plugin_skills(h).is_empty());
 }

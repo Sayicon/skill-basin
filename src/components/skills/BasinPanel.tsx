@@ -12,7 +12,8 @@ export type BasinStatus = {
 
 type SecretStatus = {
   name: string
-  state: 'keychain' | 'envFile' | 'missing'
+  /** 'unavailable' = the keychain could not be consulted; NOT the same as 'missing'. */
+  state: 'keychain' | 'envFile' | 'missing' | 'unavailable'
 }
 
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>
@@ -304,6 +305,13 @@ export const SecretsSettingsCard = ({ invokeTauri, t }: CardsProps) => {
                       {t('secrets.missing')}
                     </button>
                   )
+                ) : s.state === 'unavailable' ? (
+                  // Deliberately not an "enter the value" prompt: the secret
+                  // may well be stored, we just could not reach the keychain.
+                  // Unlocking it is the fix, re-typing the secret is not.
+                  <span className="basin-chip warn" title={t('secrets.unavailableHint')}>
+                    {t('secrets.unavailable')}
+                  </span>
                 ) : (
                   <span className="basin-chip ok">
                     {s.state === 'keychain' ? t('secrets.keychain') : t('secrets.envFile')}

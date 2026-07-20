@@ -170,6 +170,69 @@ fn schedule_supports_minutes_and_daily_time() {
 }
 
 #[test]
+fn daily_schedule_fires_once_per_local_day_at_the_chosen_time() {
+    use chrono::{Local, TimeZone};
+
+    // The due-check used to read only interval_minutes(), so picking "Daily"
+    // silently behaved like an interval. Anchor on real local wall-clock time.
+    let at = |y, m, d, hh, mm| {
+        Local
+            .with_ymd_and_hms(y, m, d, hh, mm, 0)
+            .single()
+            .expect("unambiguous local time")
+            .timestamp_millis()
+    };
+
+    let daily = AutoUpdateConfig {
+        enabled: true,
+        interval_hours: 24,
+        schedule: daily_schedule("03:00"),
+        local_skill_count: 0,
+        protected_local_skill_count: 0,
+        last_run_at: None,
+        last_started_at: None,
+        last_finished_at: None,
+        last_status: None,
+        last_error: None,
+        last_checked: 0,
+        last_updated: 0,
+        last_failed: 0,
+        progress: AutoUpdateProgressSnapshot::default(),
+    };
+
+    // Before the chosen time: not due, even though it has never run.
+    assert!(!is_auto_update_due(&daily, at(2026, 3, 10, 2, 59)));
+    // At/after it: due.
+    assert!(is_auto_update_due(&daily, at(2026, 3, 10, 3, 0)));
+    assert!(is_auto_update_due(&daily, at(2026, 3, 10, 23, 0)));
+
+    // Having run today, it must not fire again the same day...
+    let ran_today = AutoUpdateConfig {
+        last_run_at: Some(at(2026, 3, 10, 3, 0)),
+        ..daily.clone()
+    };
+    assert!(!is_auto_update_due(&ran_today, at(2026, 3, 10, 20, 0)));
+    // ...but must fire again the next day once the time passes.
+    assert!(!is_auto_update_due(&ran_today, at(2026, 3, 11, 2, 59)));
+    assert!(is_auto_update_due(&ran_today, at(2026, 3, 11, 3, 0)));
+
+    // A long gap still respects the time-of-day, not a rolling 24h interval.
+    let stale = AutoUpdateConfig {
+        last_run_at: Some(at(2026, 3, 1, 3, 0)),
+        ..daily.clone()
+    };
+    assert!(!is_auto_update_due(&stale, at(2026, 3, 10, 1, 0)));
+    assert!(is_auto_update_due(&stale, at(2026, 3, 10, 3, 0)));
+
+    // Disabled always wins.
+    let off = AutoUpdateConfig {
+        enabled: false,
+        ..daily
+    };
+    assert!(!is_auto_update_due(&off, at(2026, 3, 10, 12, 0)));
+}
+
+#[test]
 fn due_check_respects_enabled_state_and_interval() {
     let disabled = AutoUpdateConfig {
         enabled: false,

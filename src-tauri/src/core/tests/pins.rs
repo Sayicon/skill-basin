@@ -58,6 +58,35 @@ fn pins_round_trip_with_defaults() {
 }
 
 #[test]
+fn planner_refuses_skill_ids_that_escape_the_tool_dir() {
+    // pins.json is merged by git and applied unattended by the fleet agent.
+    // A skill id is joined onto the tool dir and apply_plan recursively
+    // removes that path, so a traversing id must be refused before planning —
+    // this is the "never touch unmanaged directories" guarantee.
+    let tool = tempfile::tempdir().unwrap();
+    let dirs = tool_dirs(&[("claude_code", &tool)]);
+
+    for bad in ["../escape", "..", "a/b", ".", ""] {
+        let pins = MachinePins {
+            machine: "m".to_string(),
+            pins: vec![pin(bad, "1.0.0", &["claude_code"])],
+        };
+        let err = plan_sync(&pins, &dirs).unwrap_err();
+        assert!(
+            format!("{err:#}").contains("unsafe skill id"),
+            "id {bad:?} should be refused, got: {err:#}"
+        );
+    }
+
+    // A normal id still plans fine.
+    let ok = MachinePins {
+        machine: "m".to_string(),
+        pins: vec![pin("demo", "1.0.0", &["claude_code"])],
+    };
+    assert!(plan_sync(&ok, &dirs).is_ok());
+}
+
+#[test]
 fn planner_installs_missing_pins() {
     let basin = fixture_basin();
     let claude = tempfile::tempdir().unwrap();

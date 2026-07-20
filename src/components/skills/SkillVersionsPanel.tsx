@@ -104,6 +104,13 @@ const SkillVersionsPanel = ({
           { duration: 8000 },
         )
       }
+      // The pin applied here but never reached the basin remote: other machines
+      // will not see it. A warning, not an error — locally it did take effect.
+      if (result.basin_warning) {
+        toast.warning(t('versions.basinNotPublished', { reason: result.basin_warning }), {
+          duration: 12000,
+        })
+      }
       return failures.length > 0
     },
     [t],

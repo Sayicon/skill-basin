@@ -7,9 +7,56 @@ use super::*;
 struct FakeKeychain(BTreeMap<String, String>);
 
 impl SecretStore for FakeKeychain {
-    fn get(&self, name: &str) -> Option<String> {
-        self.0.get(name).cloned()
+    fn get(&self, name: &str) -> SecretLookup {
+        match self.0.get(name) {
+            Some(value) => SecretLookup::Found(value.clone()),
+            None => SecretLookup::Absent,
+        }
     }
+}
+
+/// A keychain that cannot be consulted at all — locked, or no backend.
+struct BrokenKeychain;
+
+impl SecretStore for BrokenKeychain {
+    fn get(&self, _name: &str) -> SecretLookup {
+        SecretLookup::Unavailable("keychain is locked".to_string())
+    }
+}
+
+#[test]
+fn locked_keychain_is_reported_as_unavailable_not_missing() {
+    // Collapsing these two told the user to re-enter a secret they already
+    // have, and hid the fact that the credential store was unreachable.
+    let out = resolve_secrets(&["token".to_string()], &BrokenKeychain, None);
+    assert!(
+        out.missing.is_empty(),
+        "must not claim the secret is absent"
+    );
+    assert_eq!(
+        out.unavailable.get("token").map(String::as_str),
+        Some("keychain is locked")
+    );
+
+    // A genuinely absent secret still reports as missing.
+    let out = resolve_secrets(&["token".to_string()], &FakeKeychain(BTreeMap::new()), None);
+    assert_eq!(out.missing, vec!["token".to_string()]);
+    assert!(out.unavailable.is_empty());
+}
+
+#[test]
+fn env_file_still_answers_when_the_keychain_is_unreachable() {
+    // A locked keychain must not shadow a value the env file can supply.
+    let dir = tempfile::tempdir().unwrap();
+    let env = env_file(dir.path(), "token=from-env\n");
+    let out = resolve_secrets(&["token".to_string()], &BrokenKeychain, Some(&env));
+    assert_eq!(
+        out.resolved.get("token").map(String::as_str),
+        Some("from-env")
+    );
+    assert_eq!(out.sources.get("token"), Some(&SecretSource::EnvFile));
+    assert!(out.unavailable.is_empty());
+    assert!(out.missing.is_empty());
 }
 
 fn env_file(dir: &std::path::Path, content: &str) -> std::path::PathBuf {

@@ -287,7 +287,57 @@ fn installs_local_skill_and_updates_from_source() {
         Ok(_) => panic!("expected error"),
         Err(e) => e,
     };
-    assert!(format!("{:#}", err).contains("skill already exists"));
+    // The name rule now refuses this before any filesystem work, and reports it
+    // as NAME_TAKEN|<id>|<name>|<central_path> so the UI can offer "update the
+    // existing one" or "pick another name" instead of dead-ending the user.
+    let msg = format!("{:#}", err);
+    let payload = msg
+        .strip_prefix("NAME_TAKEN|")
+        .unwrap_or_else(|| panic!("expected NAME_TAKEN, got: {msg}"));
+    let parts: Vec<&str> = payload.split('|').collect();
+    assert_eq!(parts.len(), 3, "expected id|name|central_path, got: {msg}");
+    assert!(!parts[0].is_empty(), "must carry the existing skill id");
+    assert_eq!(parts[1], "local1");
+    assert!(
+        parts[2].contains("local1"),
+        "must carry the existing central path, got: {msg}"
+    );
+}
+
+#[test]
+fn a_disabled_skill_does_not_block_reinstalling_its_name() {
+    // Duplicates that were already disabled must not make the app unusable:
+    // the rule only guards ENABLED skills, so no migration is needed.
+    let app = tauri::test::mock_app();
+    let (_dir, store) = make_store();
+    let central_root = tempfile::tempdir().unwrap();
+    set_central_path(&store, central_root.path());
+
+    let source = tempfile::tempdir().unwrap();
+    fs::write(source.path().join("SKILL.md"), b"---\nname: x\n---\n").unwrap();
+
+    super::install_local_skill(app.handle(), &store, source.path(), Some("dup".to_string()))
+        .expect("first install");
+
+    let installed = store
+        .list_skills()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.name == "dup")
+        .expect("installed skill");
+    let mut disabled = installed.clone();
+    disabled.enabled = false;
+    store.upsert_skill(&disabled).unwrap();
+
+    // Same name again — allowed now, because nothing live holds it. It lands on
+    // a fresh central path, so the two rows coexist exactly as they do today.
+    let second =
+        super::install_local_skill(app.handle(), &store, source.path(), Some("dup".to_string()));
+    assert!(
+        second.is_ok(),
+        "a disabled holder must not block the name: {:?}",
+        second.err().map(|e| format!("{e:#}"))
+    );
 }
 
 #[test]

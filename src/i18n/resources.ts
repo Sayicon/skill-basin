@@ -53,6 +53,9 @@ export const resources = {
         cardDesc: 'Values referenced by basin configs. Stored in the OS keychain — never in the repo.',
         none: 'No ${secret:…} references in the basin yet.',
         missing: 'missing — set now',
+        unavailable: 'keychain unreachable',
+        unavailableHint:
+          'The OS keychain could not be read, so this secret’s state is unknown — it may already be stored. Unlock the keychain and refresh; do not re-enter it blindly.',
         keychain: 'keychain',
         envFile: 'secrets.env',
         valuePlaceholder: 'secret value',
@@ -483,6 +486,13 @@ export const resources = {
         licenseMissingHint:
           'This source declares no license. Without one you have no permission to use or redistribute the skill.',
         installAnyway: 'Install {{name}} anyway?',
+      },
+      nameConflict: {
+        title: 'A skill named “{{name}}” is already active',
+        hint: 'A skill’s name decides where it syncs, so two active skills cannot share one. Update the existing skill, or install this one under a different name.',
+        renameLabel: 'Install under this name instead',
+        installAsNew: 'Install as new',
+        updateExisting: 'Update the existing one',
         licensedOnly: 'Licensed only',
         licensedOnlyHint: 'Show only results that declare a license.',
         sortPopular: 'Most popular',
@@ -539,6 +549,8 @@ export const resources = {
         skillExistsInHub: 'This skill already exists in Hub. No need to install again.',
         skillExistsInHubNamed: '"{{name}}" already exists in Hub. Go to My Skills to update it.',
         targetExists: 'Target folder already exists. Please remove it and try again.',
+        nameTaken:
+          'A skill named “{{name}}” is already active ({{path}}). A name decides where a skill syncs, so two active skills cannot share one — update that skill, disable it, or install this one under a different name.',
         targetExistsDetail:
           'Target folder already exists: {{path}}. For safety it was not overwritten.',
         toolNotInstalled: 'The selected tool is not installed. Please refresh and retry.',
@@ -642,6 +654,7 @@ export const resources = {
         pinFailed: 'Failed to pin',
         unpinFailed: 'Failed to unpin',
         syncRefused: 'Pin saved, but syncing {{tool}} was refused: {{reason}}',
+        basinNotPublished: 'Applied on this machine, but not published to the basin: {{reason}}',
         pluginOverlap:
           'The enabled Claude Code plugin {{plugin}} already provides this skill — you have a duplicate. Disable one so Claude Code does not load it twice.',
         behind_one: '{{count}} tool behind',
@@ -757,6 +770,9 @@ export const resources = {
         cardDesc: 'Havuz config’lerinin referans verdiği değerler. OS keychain’de saklanır — asla repo’da değil.',
         none: 'Havuzda henüz ${secret:…} referansı yok.',
         missing: 'eksik — şimdi gir',
+        unavailable: 'keychain okunamadı',
+        unavailableHint:
+          'OS keychain okunamadı, bu yüzden secret’ın durumu bilinmiyor — zaten kayıtlı olabilir. Keychain’i açıp yenile; körlemesine yeniden girme.',
         keychain: 'keychain',
         envFile: 'secrets.env',
         valuePlaceholder: 'secret değeri',
@@ -913,7 +929,8 @@ export const resources = {
       clearAll: 'Tümünü temizle',
       manageTags: 'Etiketleri Yönet...',
       tagsHelp: 'Etiketler skilleri filtrelemene ve düzenlemene yarar. Senkron sonuçlarını değiştirmez.',
-      untaggedSkillsCount: '{{count}} skill\'in etiketi yok',
+      untaggedSkillsCount_one: '{{count}} skill\'in etiketi yok',
+      untaggedSkillsCount_other: '{{count}} skill\'in etiketi yok',
       review: 'İncele',
       newTag: 'Yeni Etiket',
       newTagPlaceholder: 'Yeni etiket adı',
@@ -1186,6 +1203,13 @@ export const resources = {
         licenseMissingHint:
           'Bu kaynak bir lisans belirtmiyor. Lisans olmadan skill\'i kullanma veya dağıtma iznin yok.',
         installAnyway: '{{name}} yine de kurulsun mu?',
+      },
+      nameConflict: {
+        title: '“{{name}}” adında aktif bir skill zaten var',
+        hint: 'Skill’in adı nereye senkronlanacağını belirler, bu yüzden iki aktif skill aynı adı taşıyamaz. Mevcut olanı güncelle ya da bunu farklı bir adla kur.',
+        renameLabel: 'Bunun yerine şu adla kur',
+        installAsNew: 'Yeni olarak kur',
+        updateExisting: 'Mevcut olanı güncelle',
         licensedOnly: 'Sadece lisanslı',
         licensedOnlyHint: 'Yalnızca lisans belirten sonuçları göster.',
         sortPopular: 'En popüler',
@@ -1242,6 +1266,8 @@ export const resources = {
         skillExistsInHub: 'Bu skill zaten Hub\'da mevcut. Tekrar kurmana gerek yok.',
         skillExistsInHubNamed: '"{{name}}" zaten Hub\'da mevcut. Güncellemek için Skillerim\'e git.',
         targetExists: 'Hedef klasör zaten mevcut. Lütfen kaldırıp tekrar dene.',
+        nameTaken:
+          '“{{name}}” adında aktif bir skill zaten var ({{path}}). Ad, skill’in nereye senkronlanacağını belirler; bu yüzden iki aktif skill aynı adı taşıyamaz — o skill’i güncelle, kapat ya da bunu farklı bir adla kur.',
         targetExistsDetail:
           'Hedef klasör zaten mevcut: {{path}}. Güvenlik için üzerine yazılmadı.',
         toolNotInstalled: 'Seçili araç kurulu değil. Lütfen yenile ve tekrar dene.',
@@ -1329,7 +1355,8 @@ export const resources = {
         loadingFiles: 'Dosyalar yükleniyor...',
         loadingContent: 'Dosya içeriği yükleniyor...',
         readError: 'Dosya okunamadı',
-        fileCount: '{{count}} dosya',
+        fileCount_one: '{{count}} dosya',
+        fileCount_other: '{{count}} dosya',
       },
       versions: {
         loading: 'Versiyonlar yükleniyor...',
@@ -1344,6 +1371,7 @@ export const resources = {
         pinFailed: 'Pinleme başarısız',
         unpinFailed: 'Pin kaldırma başarısız',
         syncRefused: 'Pin kaydedildi ama {{tool}} senkronu reddedildi: {{reason}}',
+        basinNotPublished: 'Bu makinede uygulandı ama havuza yayınlanmadı: {{reason}}',
         pluginOverlap:
           'Etkin Claude Code eklentisi {{plugin}} bu skill\'i zaten sağlıyor — bir kopya oluştu. Claude Code iki kez yüklemesin diye birini kapatın.',
         behind_one: '{{count}} araç geride',
@@ -1459,6 +1487,9 @@ export const resources = {
         cardDesc: '技能池配置引用的值。保存在系统钥匙串中 — 绝不进入仓库。',
         none: '技能池中暂无 ${secret:…} 引用。',
         missing: '缺失 — 立即设置',
+        unavailable: '无法读取钥匙串',
+        unavailableHint:
+          '无法读取系统钥匙串，因此该密钥状态未知 — 它可能已保存。请解锁钥匙串后刷新，不要盲目重新输入。',
         keychain: '钥匙串',
         envFile: 'secrets.env',
         valuePlaceholder: '密钥值',
@@ -1615,7 +1646,7 @@ export const resources = {
       clearAll: '清空',
       manageTags: '管理标签...',
       tagsHelp: '标签用于筛选和整理 Skills，不会改变同步结果。',
-      untaggedSkillsCount: '{{count}} 个 Skills 还没有标签',
+      untaggedSkillsCount_other: '{{count}} 个 Skills 还没有标签',
       review: '查看',
       newTag: '新建标签',
       newTagPlaceholder: '新标签名称',
@@ -1873,6 +1904,13 @@ export const resources = {
         licenseMissing: '无许可证',
         licenseMissingHint: '此来源未声明许可证。没有许可证，你无权使用或分发该 Skill。',
         installAnyway: '仍要安装 {{name}} 吗？',
+      },
+      nameConflict: {
+        title: '已有一个名为“{{name}}”的启用中技能',
+        hint: '技能的名称决定它同步到哪里，因此两个启用中的技能不能同名。请更新现有技能，或用其他名称安装这个。',
+        renameLabel: '改用此名称安装',
+        installAsNew: '作为新技能安装',
+        updateExisting: '更新现有技能',
         licensedOnly: '仅限有许可证',
         licensedOnlyHint: '仅显示声明了许可证的结果。',
         sortPopular: '最热门',
@@ -1926,6 +1964,8 @@ export const resources = {
         skillExistsInHub: '该 Skill 已存在于 Hub，无需重复安装。',
         skillExistsInHubNamed: '「{{name}}」已存在于 Hub，可前往"我的 Skills"中更新。',
         targetExists: '目标目录已存在，请先清理后重试。',
+        nameTaken:
+          '已有一个名为“{{name}}”的启用中技能（{{path}}）。名称决定技能同步到哪里，因此两个启用中的技能不能同名 — 请更新该技能、将其停用，或用其他名称安装这个。',
         targetExistsDetail:
           '目标目录已存在同名 Skill：{{path}}。为安全起见未覆盖。\n你可以：先手动清理该目录后重试。',
         toolNotInstalled: '未检测到该工具已安装，请刷新后重试。',
@@ -2009,7 +2049,7 @@ export const resources = {
         loadingFiles: '加载文件中...',
         loadingContent: '加载文件内容中...',
         readError: '读取文件失败',
-        fileCount: '{{count}} 个文件',
+        fileCount_other: '{{count}} 个文件',
       },
       versions: {
         loading: '加载版本中...',
@@ -2024,6 +2064,7 @@ export const resources = {
         pinFailed: '固定失败',
         unpinFailed: '取消固定失败',
         syncRefused: '已保存固定，但同步 {{tool}} 被拒绝：{{reason}}',
+        basinNotPublished: '已在本机应用，但未发布到 basin：{{reason}}',
         pluginOverlap:
           '已启用的 Claude Code 插件 {{plugin}} 已提供此技能——存在重复。请禁用其中一个，以免 Claude Code 重复加载。',
         behind_other: '{{count}} 个工具版本落后',
