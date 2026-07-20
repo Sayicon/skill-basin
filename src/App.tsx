@@ -73,6 +73,9 @@ import type {
   ToolStatusDto,
   UpdateResultDto,
 } from './components/skills/types'
+import NameConflictModal, {
+  type NameConflict,
+} from './components/skills/modals/NameConflictModal'
 
 /**
  * A sync can succeed and still leave Claude Code loading the same skill twice,
@@ -83,6 +86,15 @@ const notifySyncWarning = (result: SyncResultDto | undefined | null) => {
   if (result?.warning) {
     toast.warning(result.warning, { id: result.warning, duration: 12000 })
   }
+}
+
+/**
+ * A name collision plus how to retry the install that hit it. Carrying the
+ * retry as a closure keeps each call site's own arguments with it, so the
+ * resolver never has to reconstruct which command and payload produced it.
+ */
+type PendingNameConflict = NameConflict & {
+  retry: (newName: string) => Promise<void>
 }
 
 type SkillScopeState = Record<
@@ -127,6 +139,16 @@ function App() {
     null,
   )
   const [managedSkills, setManagedSkills] = useState<ManagedSkill[]>([])
+  /**
+   * Name collisions waiting to be resolved, oldest first.
+   *
+   * A queue rather than an interrupt: installs run in batches, and stopping a
+   * ten-skill import on item three to ask a question strands the other seven.
+   * Conflicts are collected while the batch finishes normally, then resolved
+   * one at a time. A single install is just a batch of one, so the same path
+   * serves both and there is only one flow to get right.
+   */
+  const [nameConflicts, setNameConflicts] = useState<PendingNameConflict[]>([])
   const [machinePins, setMachinePins] = useState<MachinePinsDto | null>(null)
   const [basinSetup, setBasinSetup] = useState<BasinStatus | null>(null)
   const [latestVersions, setLatestVersions] = useState<Record<string, string>>({})
@@ -286,11 +308,64 @@ function App() {
     },
     [formatErrorMessage, t],
   )
-  const isSkillNameTaken = useCallback(
+  /**
+   * The ENABLED skill already holding this name, if any.
+   *
+   * Mirrors the backend rule exactly: a name is the sync identity, so only two
+   * ENABLED skills conflict. Counting disabled ones here too would lock every
+   * name a user had ever disabled out of the UI while the backend happily
+   * allowed it.
+   */
+  const activeNameHolder = useCallback(
     (name: string) =>
-      managedSkills.some((skill) => skill.name.toLowerCase() === name.toLowerCase()),
+      managedSkills.find(
+        (skill) => skill.enabled && skill.name.toLowerCase() === name.toLowerCase(),
+      ) ?? null,
     [managedSkills],
   )
+
+  /**
+   * Turn a backend NAME_TAKEN error into a queued conflict. Returns true when
+   * it handled the error, so callers can tell "resolvable collision" from a
+   * genuine failure that still belongs in their error list.
+   *
+   * The backend is the authority even though the UI pre-checks: the pre-check
+   * reads a list that may be stale, and the collision could also come from a
+   * name derived inside the installer that the UI never saw.
+   */
+  const captureNameConflict = useCallback(
+    (err: unknown, retry: (newName: string) => Promise<void>): boolean => {
+      const raw = err instanceof Error ? err.message : String(err)
+      if (!raw.startsWith('NAME_TAKEN|')) return false
+      const [, existingId, name, centralPath] = raw.split('|')
+      setNameConflicts((queue) => [
+        ...queue,
+        { existingId, name: name ?? '', centralPath: centralPath ?? '', retry },
+      ])
+      return true
+    },
+    [],
+  )
+
+  /** Queue a collision the UI spotted itself, before calling the backend. */
+  const queueNameConflict = useCallback(
+    (holder: ManagedSkill, retry: (newName: string) => Promise<void>) => {
+      setNameConflicts((queue) => [
+        ...queue,
+        {
+          existingId: holder.id,
+          name: holder.name,
+          centralPath: holder.central_path,
+          retry,
+        },
+      ])
+    },
+    [],
+  )
+
+  const dropFirstConflict = useCallback(() => {
+    setNameConflicts((queue) => queue.slice(1))
+  }, [])
 
   const formatRelative = (ms: number | null | undefined) => {
     if (!ms) return t('relative.empty')
@@ -379,6 +454,60 @@ function App() {
       setError(err instanceof Error ? err.message : String(err))
     }
   }, [invokeTauri])
+
+  /** Retry the blocked install under a name the user picked. */
+  const resolveConflictByRename = useCallback(
+    async (newName: string) => {
+      const conflict = nameConflicts[0]
+      if (!conflict) return
+      setLoading(true)
+      try {
+        await conflict.retry(newName)
+        await loadManagedSkills()
+        setSuccessToastMessage(t('status.localSkillCreated'))
+        dropFirstConflict()
+      } catch (err) {
+        // A retry can collide again (the new name may also be taken); replace
+        // this conflict with the fresh one rather than stacking a stale entry.
+        dropFirstConflict()
+        if (!captureNameConflict(err, conflict.retry)) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      } finally {
+        setLoading(false)
+      }
+    },
+    [
+      captureNameConflict,
+      dropFirstConflict,
+      loadManagedSkills,
+      nameConflicts,
+      t,
+    ],
+  )
+
+  /**
+   * Update the skill the user already has, from ITS OWN source — which is what
+   * "I meant to get the newer version" usually means. The install being
+   * attempted is abandoned, not merged in.
+   */
+  const resolveConflictByUpdating = useCallback(async () => {
+    const conflict = nameConflicts[0]
+    if (!conflict) return
+    setLoading(true)
+    try {
+      await invokeTauri<UpdateResultDto>('update_managed_skill', {
+        skillId: conflict.existingId,
+      })
+      await loadManagedSkills()
+      setSuccessToastMessage(t('status.skillUpdated', { name: conflict.name }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+      dropFirstConflict()
+    }
+  }, [dropFirstConflict, invokeTauri, loadManagedSkills, nameConflicts, t])
 
   const loadTags = useCallback(async () => {
     try {
@@ -1407,6 +1536,42 @@ function App() {
       }
     },
     [addModalTagIds, invokeTauri, t],
+  )
+
+  /**
+   * Install one skill from git, routing a name collision into the conflict
+   * queue instead of a dead-end error. The three git entry points (explicit
+   * URL, single-candidate repo, auto-selected search result) differ only in
+   * how they arrive at a subpath, so they share this.
+   */
+  const installGitSkillOrQueue = useCallback(
+    async (repoUrl: string, subpath: string, candidateName: string, requestedName?: string) => {
+      const run = async (name?: string) => {
+        const created = await invokeTauri<InstallResultDto>('install_git_selection', {
+          repoUrl,
+          subpath,
+          name,
+        })
+        await applySelectedAddModalTags(created.skill_id, created.name)
+        const errors = await syncInstalledSkill(created)
+        if (errors.length > 0) showActionErrors(errors)
+      }
+
+      const holder = activeNameHolder(requestedName || candidateName)
+      if (holder) {
+        queueNameConflict(holder, (newName) => run(newName))
+        return
+      }
+      await run(requestedName)
+    },
+    [
+      activeNameHolder,
+      applySelectedAddModalTags,
+      invokeTauri,
+      queueNameConflict,
+      showActionErrors,
+      syncInstalledSkill,
+    ],
   )
 
   // A cancel must also stop a multi-select import loop from starting the next
@@ -2502,8 +2667,17 @@ function App() {
       }
       if (candidates.length === 1 && candidates[0].valid) {
         const desiredName = localName.trim() || candidates[0].name
-        if (isSkillNameTaken(desiredName)) {
-          setError(t('errors.skillAlreadyExists', { name: desiredName }))
+        const holder = activeNameHolder(desiredName)
+        if (holder) {
+          queueNameConflict(holder, async (newName) => {
+            const retried = await invokeTauri<InstallResultDto>(
+              'install_local_selection',
+              { basePath, subpath: candidates[0].subpath, name: newName },
+            )
+            await applySelectedAddModalTags(retried.skill_id, retried.name)
+            const errors = await syncInstalledSkill(retried)
+            if (errors.length > 0) showActionErrors(errors)
+          })
           return
         }
         const created = await invokeTauri<InstallResultDto>(
@@ -2581,21 +2755,12 @@ function App() {
           setLoadingStartAt(null)
           return
         }
-        if (isSkillNameTaken(candidates[0].name)) {
-          setError(t('errors.skillAlreadyExists', { name: candidates[0].name }))
-          return
-        }
-        const created = await invokeTauri<InstallResultDto>(
-          'install_git_selection',
-          {
-            repoUrl: url,
-            subpath: candidates[0].subpath,
-            name: gitName.trim() || undefined,
-          },
+        await installGitSkillOrQueue(
+          url,
+          candidates[0].subpath,
+          candidates[0].name,
+          gitName.trim() || undefined,
         )
-        await applySelectedAddModalTags(created.skill_id, created.name)
-        const syncErrors = await syncInstalledSkill(created)
-        if (syncErrors.length > 0) showActionErrors(syncErrors)
       } else {
         const candidates = await invokeTauri<GitSkillCandidate[]>(
           'list_git_skills_cmd',
@@ -2605,21 +2770,12 @@ function App() {
           throw new Error(t('errors.noSkillsFoundWithHint'))
         }
         if (candidates.length === 1) {
-          if (isSkillNameTaken(candidates[0].name)) {
-            setError(t('errors.skillAlreadyExists', { name: candidates[0].name }))
-            return
-          }
-          const created = await invokeTauri<InstallResultDto>(
-            'install_git_selection',
-            {
-            repoUrl: url,
-            subpath: candidates[0].subpath,
-            name: gitName.trim() || undefined,
-            },
+          await installGitSkillOrQueue(
+            url,
+            candidates[0].subpath,
+            candidates[0].name,
+            gitName.trim() || undefined,
           )
-          await applySelectedAddModalTags(created.skill_id, created.name)
-          const syncErrors = await syncInstalledSkill(created)
-          if (syncErrors.length > 0) showActionErrors(syncErrors)
         } else if (autoSelectSkillName) {
           // Auto-select the matching skill from online search results.
           // skills.sh name may differ from SKILL.md name (e.g. "json-render-react" vs "react"),
@@ -2634,21 +2790,12 @@ function App() {
             (containMatches.length === 1 ? containMatches[0] : undefined)
           setAutoSelectSkillName(null)
           if (match) {
-            if (isSkillNameTaken(match.name)) {
-              setError(t('errors.skillAlreadyExists', { name: match.name }))
-              return
-            }
-            const created = await invokeTauri<InstallResultDto>(
-              'install_git_selection',
-              {
-                repoUrl: url,
-                subpath: match.subpath,
-                name: gitName.trim() || undefined,
-              },
+            await installGitSkillOrQueue(
+              url,
+              match.subpath,
+              match.name,
+              gitName.trim() || undefined,
             )
-            await applySelectedAddModalTags(created.skill_id, created.name)
-            const syncErrors = await syncInstalledSkill(created)
-            if (syncErrors.length > 0) showActionErrors(syncErrors)
           } else {
             // No match found, fall back to picker
             setGitCandidatesRepoUrl(url)
@@ -2805,19 +2952,10 @@ function App() {
         return
       }
     }
-    const desiredName =
-      selected.length === 1 && localName.trim()
-        ? localName.trim()
-        : selected[0].name
-    if (selected.length === 1 && isSkillNameTaken(desiredName)) {
-      setError(t('errors.skillAlreadyExists', { name: desiredName }))
-      return
-    }
-    const duplicated = selected.find((c) => isSkillNameTaken(c.name))
-    if (selected.length > 1 && duplicated) {
-      setError(t('errors.skillAlreadyExists', { name: duplicated.name }))
-      return
-    }
+    // No pre-check here on purpose: one taken name used to abort the entire
+    // batch before anything was installed. Collisions are collected as the
+    // batch runs and resolved afterwards, so the skills that CAN be installed
+    // still are.
 
     setLoading(true)
     setLoadingStartAt(Date.now())
@@ -2848,11 +2986,24 @@ function App() {
           const syncErrors = await syncInstalledSkill(created)
           collectedErrors.push(...syncErrors)
         } catch (err) {
-          const raw = err instanceof Error ? err.message : String(err)
-          collectedErrors.push({
-            title: t('errors.importFailedTitle', { name: candidate.name }),
-            message: raw,
+          // A taken name is resolvable, not a failure: queue it and let the
+          // rest of the batch finish.
+          const queued = captureNameConflict(err, async (newName) => {
+            const retried = await invokeTauri<InstallResultDto>('install_local_selection', {
+              basePath: localCandidatesBasePath,
+              subpath: candidate.subpath,
+              name: newName,
+            })
+            await applySelectedAddModalTags(retried.skill_id, retried.name)
+            const errors = await syncInstalledSkill(retried)
+            if (errors.length > 0) showActionErrors(errors)
           })
+          if (!queued) {
+            collectedErrors.push({
+              title: t('errors.importFailedTitle', { name: candidate.name }),
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
         }
       }
 
@@ -2882,11 +3033,8 @@ function App() {
       setError(t('errors.selectAtLeastOneSkill'))
       return
     }
-    const duplicated = selected.find((c) => isSkillNameTaken(c.name))
-    if (duplicated) {
-      setError(t('errors.skillAlreadyExists', { name: duplicated.name }))
-      return
-    }
+    // Collisions are collected during the batch and resolved after it, rather
+    // than aborting every selected skill because one name is taken.
     if (selected.length > 1 && gitName.trim()) {
       setError(t('errors.multiSelectNoCustomName'))
       return
@@ -2921,11 +3069,22 @@ function App() {
           const syncErrors = await syncInstalledSkill(created)
           collectedErrors.push(...syncErrors)
         } catch (err) {
-          const raw = err instanceof Error ? err.message : String(err)
-          collectedErrors.push({
-            title: t('errors.importFailedTitle', { name: candidate.name }),
-            message: raw,
+          const queued = captureNameConflict(err, async (newName) => {
+            const retried = await invokeTauri<InstallResultDto>('install_git_selection', {
+              repoUrl: gitCandidatesRepoUrl,
+              subpath: candidate.subpath,
+              name: newName,
+            })
+            await applySelectedAddModalTags(retried.skill_id, retried.name)
+            const errors = await syncInstalledSkill(retried)
+            if (errors.length > 0) showActionErrors(errors)
           })
+          if (!queued) {
+            collectedErrors.push({
+              title: t('errors.importFailedTitle', { name: candidate.name }),
+              message: err instanceof Error ? err.message : String(err),
+            })
+          }
         }
       }
 
@@ -3747,6 +3906,15 @@ function App() {
           />
         )}
       </main>
+
+      <NameConflictModal
+        conflict={nameConflicts[0] ?? null}
+        loading={loading}
+        onRequestClose={dropFirstConflict}
+        onUpdateExisting={() => void resolveConflictByUpdating()}
+        onRename={(newName) => void resolveConflictByRename(newName)}
+        t={t}
+      />
 
       <UnlicensedInstallModal
         open={Boolean(pendingUnlicensedInstall)}

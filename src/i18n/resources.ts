@@ -492,7 +492,7 @@ export const resources = {
         hint: 'A skill’s name decides where it syncs, so two active skills cannot share one. Update the existing skill, or install this one under a different name.',
         renameLabel: 'Install under this name instead',
         installAsNew: 'Install as new',
-        updateExisting: 'Update the existing one',
+        updateExisting: 'Update the one I have',
         licensedOnly: 'Licensed only',
         licensedOnlyHint: 'Show only results that declare a license.',
         sortPopular: 'Most popular',
@@ -594,6 +594,7 @@ export const resources = {
       status: {
         importCompleted: 'Import completed.',
         localSkillCreated: 'Local skill created.',
+        skillUpdated: '{{name}} updated from its own source.',
         gitSkillCreated: 'Git skill created.',
         selectedSkillsInstalled: 'Selected skills installed.',
         skillRemoved: 'Skill removed.',
@@ -1209,7 +1210,7 @@ export const resources = {
         hint: 'Skill’in adı nereye senkronlanacağını belirler, bu yüzden iki aktif skill aynı adı taşıyamaz. Mevcut olanı güncelle ya da bunu farklı bir adla kur.',
         renameLabel: 'Bunun yerine şu adla kur',
         installAsNew: 'Yeni olarak kur',
-        updateExisting: 'Mevcut olanı güncelle',
+        updateExisting: 'Bendekini güncelle',
         licensedOnly: 'Sadece lisanslı',
         licensedOnlyHint: 'Yalnızca lisans belirten sonuçları göster.',
         sortPopular: 'En popüler',
@@ -1311,6 +1312,7 @@ export const resources = {
       status: {
         importCompleted: 'İçe aktarma tamamlandı.',
         localSkillCreated: 'Yerel skill oluşturuldu.',
+        skillUpdated: '{{name}} kendi kaynağından güncellendi.',
         gitSkillCreated: 'Git skill oluşturuldu.',
         selectedSkillsInstalled: 'Seçili skiller kuruldu.',
         skillRemoved: 'Skill kaldırıldı.',
@@ -2005,6 +2007,7 @@ export const resources = {
       status: {
         importCompleted: '导入完成。',
         localSkillCreated: '本地技能创建完成。',
+        skillUpdated: '{{name}} 已从其自身来源更新。',
         gitSkillCreated: 'Git 技能创建完成。',
         selectedSkillsInstalled: '选中技能安装完成。',
         skillRemoved: '已删除该技能。',

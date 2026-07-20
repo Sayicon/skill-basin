@@ -7,8 +7,6 @@ export type NameConflict = {
   existingId: string
   name: string
   centralPath: string
-  /** True when the incoming source could update the existing skill in place. */
-  canUpdate: boolean
 }
 
 type NameConflictModalProps = {
@@ -26,9 +24,10 @@ type NameConflictModalProps = {
  * leaves the user stuck: what they usually meant was "update the one I have".
  * So the block is a fork, not a dead end.
  *
- * "Update the existing one" only appears when the incoming source can actually
- * update it — updating a git-backed skill from a local folder would silently
- * change what that skill IS.
+ * "Update the existing one" pulls the skill you already have from ITS OWN
+ * recorded source, not from the one being installed — so it can never quietly
+ * change what that skill is. The label says so, because "update" next to an
+ * install prompt otherwise reads as "install this over that".
  */
 const NameConflictModal = ({
   conflict,
@@ -84,11 +83,9 @@ const NameConflictModal = ({
           <button className="btn btn-secondary" onClick={onRequestClose} disabled={loading}>
             {t('cancel')}
           </button>
-          {conflict.canUpdate ? (
-            <button className="btn btn-secondary" onClick={onUpdateExisting} disabled={loading}>
-              {t('nameConflict.updateExisting')}
-            </button>
-          ) : null}
+          <button className="btn btn-secondary" onClick={onUpdateExisting} disabled={loading}>
+            {t('nameConflict.updateExisting')}
+          </button>
           <button
             className="btn btn-primary"
             onClick={() => onRename(newName.trim())}
