@@ -4,6 +4,58 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-20
+
+### Fixed
+- **Fleet actually publishes now.** Pinning, unpinning, disabling and deleting a
+  skill committed to the basin but never pushed it, so a pin made on the desktop
+  never reached any other machine. All four paths now publish, and a failure to
+  publish is reported as a warning on a change that did take effect locally —
+  not as a failed operation.
+- **A failed push no longer destroys the agent's work.** The fleet agent commits
+  its status report and pushes afterwards; pulling used `reset --hard`, so a
+  commit left unpushed by an offline or rejected push was erased on the next
+  run. Pulling now rebases.
+- **Concurrent pin changes no longer overwrite each other.** `pins.json` was
+  read, modified and written back without a lock, so two changes issued together
+  could silently drop one.
+- **Cursor pins are usable again.** Pin-based sync bypassed the rule that forces
+  a copy for tools that cannot follow symlinks, leaving every Cursor pin as a
+  link Cursor cannot read.
+- **Content hashes are reproducible across machines.** Directory hashing walked
+  files in filesystem order, so identical content could hash differently on
+  different machines — defeating the point of the hash.
+- **A corrupt skill id can no longer escape its tool directory.** Ids from
+  `pins.json` and managed manifests were joined onto tool paths unchecked, so a
+  traversing id could place — and later delete — a directory outside it.
+- **Duplicate skill names are refused instead of silently colliding.** A skill's
+  name decides where it syncs, so two enabled skills sharing one fought over the
+  same directory. Installing or re-enabling a skill whose name is already live
+  now fails with a message naming the existing skill. Disabled duplicates are
+  exempt, so existing libraries keep working untouched.
+- **Daily auto-update works.** The due-check only ever read the interval
+  setting, so choosing "daily at HH:mm" behaved like whatever interval happened
+  to be configured. It now fires once per local day at the chosen time.
+- **A configured GitHub proxy is no longer bypassed.** When no system git binary
+  was present, the built-in git was used without consulting the proxy setting.
+  It now refuses rather than connecting directly.
+- **Plugin-overlap warnings appear on the path skills actually take.** Detection
+  ran only when pinning, never on ordinary sync — which is how most skills are
+  installed.
+- **Changing the storage path can no longer strand a skill.** A failure while
+  moving one skill skipped recording the ones already moved, leaving data in the
+  new location that the database still expected in the old one and blocking
+  every retry. Migration is now resumable.
+- **A locked keychain is no longer reported as a missing secret**, which sent
+  users to re-enter credentials they already had.
+- Search requests now time out and classify rate limiting; the built-in git
+  fetch can be cancelled; nested `mcp/` configs are scanned for secrets;
+  Windows-style `~\` paths expand; missing Turkish and Chinese plural forms
+  added.
+
+### Changed
+- Scrollbars are thin and consistent everywhere, including horizontal ones.
+
 ## [0.1.3] - 2026-07-15
 
 ### Added

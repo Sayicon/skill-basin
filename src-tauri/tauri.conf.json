@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "SkillBasin",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "identifier": "dev.skillbasin.app",
   "build": {
     "frontendDist": "../dist",
