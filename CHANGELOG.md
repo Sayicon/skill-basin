@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-07-21
+
+### Changed
+- **Each skill sort now has a direction you can flip.** Picking "Most recent" or
+  "Name" a second time reverses it — newest⇄oldest, A→Z⇄Z→A — and the button
+  shows an arrow for the direction currently in effect. Choosing a different
+  sort starts at its natural direction (newest first, A→Z).
+
 ## [0.1.5] - 2026-07-20
 
 ### Fixed
