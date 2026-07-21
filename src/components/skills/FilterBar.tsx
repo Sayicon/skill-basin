@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { ArrowUpDown, Check, CheckSquare, ChevronDown, Search, Tags } from 'lucide-react'
+import { ArrowDown, ArrowUp, Check, CheckSquare, ChevronDown, Search, Tags } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { TagWithCountDto } from './types'
 
@@ -75,6 +75,7 @@ function Dropdown<T extends string>({
 
 type FilterBarProps = {
   sortBy: 'updated' | 'name'
+  sortDir: 'asc' | 'desc'
   searchQuery: string
   scopeFilter: 'all' | 'global' | 'project'
   tags: TagWithCountDto[]
@@ -97,6 +98,7 @@ type FilterBarProps = {
 
 const FilterBar = ({
   sortBy,
+  sortDir,
   searchQuery,
   scopeFilter,
   tags,
@@ -164,7 +166,8 @@ const FilterBar = ({
           ]}
           onChange={onSortChange}
           ariaLabel={t('filterSort')}
-          icon={<ArrowUpDown size={12} />}
+          // The arrow shows the active direction; re-picking the sort flips it.
+          icon={sortDir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
         />
         <button
           className={`btn btn-secondary bulk-mode-btn${bulkMode ? ' active' : ''}`}

@@ -200,6 +200,10 @@ function App() {
   const updateObjRef = useRef<Update | null>(null) as MutableRefObject<Update | null>
   const [searchQuery, setSearchQuery] = useState('')
   const [sortBy, setSortBy] = useState<'updated' | 'name'>('updated')
+  // Each sort has a direction the user can flip. Defaults are the intuitive
+  // ones — newest first, A→Z — so picking a sort behaves as expected, and
+  // re-picking the same one reverses it.
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [scopeFilter, setScopeFilter] = useState<'all' | 'global' | 'project'>('all')
   const [activeView, setActiveView] = useState<ActiveView>('myskills')
   const [managementTab, setManagementTab] = useState<ManagementTab>('tags')
@@ -1014,10 +1018,13 @@ function App() {
       )
     })
     const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'name') {
-        return a.name.localeCompare(b.name)
-      }
-      return (b.updated_at ?? 0) - (a.updated_at ?? 0)
+      // Compare ascending, then flip for descending — one comparison, one place
+      // the direction is applied.
+      const cmp =
+        sortBy === 'name'
+          ? a.name.localeCompare(b.name)
+          : (a.updated_at ?? 0) - (b.updated_at ?? 0)
+      return sortDir === 'asc' ? cmp : -cmp
     })
     return sorted
   }, [
@@ -1028,6 +1035,7 @@ function App() {
     searchQuery,
     selectedTagIds,
     sortBy,
+    sortDir,
   ])
   const untaggedCount = useMemo(
     () => managedSkills.filter((skill) => skill.tags.length === 0).length,
@@ -1644,9 +1652,19 @@ function App() {
     setShowAddModal(true)
   }, [loading])
 
-  const handleSortChange = useCallback((value: 'updated' | 'name') => {
-    setSortBy(value)
-  }, [])
+  const handleSortChange = useCallback(
+    (value: 'updated' | 'name') => {
+      if (value === sortBy) {
+        // Re-picking the active sort flips its direction.
+        setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+      } else {
+        // A different sort starts at its natural direction.
+        setSortBy(value)
+        setSortDir(value === 'name' ? 'asc' : 'desc')
+      }
+    },
+    [sortBy],
+  )
 
   const handleSearchChange = useCallback((value: string) => {
     setSearchQuery(value)
@@ -3693,6 +3711,7 @@ function App() {
           <div className="dashboard-stack">
             <FilterBar
               sortBy={sortBy}
+              sortDir={sortDir}
               searchQuery={searchQuery}
               scopeFilter={scopeFilter}
               tags={tags}
